@@ -13,6 +13,19 @@ once the clock is synced. Settings are edited on a web page served by the Shelly
 3. Switch settings -> power-on default: **Off** (fail-safe if the controller is ever stopped).
 4. Open `http://<shelly-ip>/script/<controller id>/ui` (the console prints the exact URL).
 
+### Upgrading from a computer
+`tools/deploy.py` uploads `dist/` to the device over its RPC API (Python 3, standard library only):
+```
+python3 tools/deploy.py 192.168.1.50                    # LAN IP
+python3 tools/deploy.py shelly.example.com --dry-run    # domain; only show what would change
+python3 tools/deploy.py 192.168.1.50 --build            # rebuild dist/ first
+```
+It finds the controller (name starting `shabbat_elevator`) and `shabbat_ui` scripts, creating
+them if missing, uploads only scripts whose code differs, verifies each upload by reading it back,
+restarts the controller, keeps `shabbat_ui` stopped, and prints memory use and the next window.
+Re-running is harmless. Options: `--password` (or `SHELLY_PASSWORD`), `--diag` (install the
+diagnostic build), `--no-ui`, `--restart`.
+
 The controller deletes any virtual components left on the device by older versions.
 
 ## Settings page
@@ -43,6 +56,7 @@ The controller deletes any virtual components left on the device by older versio
 - `src/main.js` controller, `src/ui.js` settings page, `src/table.js` generated table
 - `tools/gen_table.py` table generator (hdate, or `--from-header` an ESPHome `.h`; adds DST periods)
 - `tools/build.py` -> `dist/shabbat_elevator.js`, `dist/shabbat_elevator_diag.js`, `dist/shabbat_ui.js`
+- `tools/deploy.py` uploads `dist/` to a device (see "Upgrading from a computer")
 - `test/sim.js` device simulator (minute-by-minute relay sweep vs an independent reference)
 - `test/mockdevice.js` + `test/ui_test.js` fake Shelly + Playwright browser test of the page
 
