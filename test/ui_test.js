@@ -197,6 +197,13 @@ const NOW = 1793731800; // Tue 03/11/2026 20:50 Israel
   await en.click("role=tab[name='Status']");
   await en.click("text=Technical info");
   await en.waitForSelector("text=Firmware");
+  const diagTxt = (await en.textContent("main")).replace(/[\u2066\u2069]/g, ""); // bidi isolates
+  check(
+    /94\.7 KB of 260 KB \(36%\)/.test(diagTxt) &&
+      /92\.0 KB of 512 KB \(18%\)/.test(diagTxt) &&
+      /15\.5 KB used \(65%\) · peak 21\.3 KB \(90%\) · free 8\.2 KB/.test(diagTxt),
+    "memory percentages: " + (diagTxt.match(/Free device memory.{0,120}/) || [""])[0]
+  );
   // no Hebrew anywhere except the language button (the Hebrew-calendar date is in English)
   const enAll = (await en.textContent("body")).replace("עברית", "");
   check(

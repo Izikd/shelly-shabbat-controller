@@ -22,7 +22,7 @@ if (typeof document !== "undefined")
     };
 
     // ---------- languages ----------
-    // Every visible string lives here. tr(s, a, b, c) fills {0} {1} {2}.
+    // Every visible string lives here. tr(s, a, b, ...) fills {0} {1} ...
     var I18N = {
       he: {
         dir: "rtl",
@@ -94,8 +94,10 @@ if (typeof document !== "undefined")
         dLastSync: "סנכרון שעון אחרון",
         dNeverSynced: "לא סונכרן",
         dRamFree: "זיכרון פנוי במכשיר",
+        dStorage: "אחסון פנוי",
+        dOfFmt: "{0} מתוך {1} ({2})",
         dScrMem: "זיכרון הסקריפט",
-        dMemFmt: "{0} בשימוש · שיא {1} · פנוי {2}",
+        dMemFmt: "{0} בשימוש ({1}) · שיא {2} ({3}) · פנוי {4}",
         dScrState: "מצב הסקריפט",
         dRunning: "רץ",
         dStopped: "עצור",
@@ -216,8 +218,10 @@ if (typeof document !== "undefined")
         dLastSync: "Last clock sync",
         dNeverSynced: "never",
         dRamFree: "Free device memory",
+        dStorage: "Free storage",
+        dOfFmt: "{0} of {1} ({2})",
         dScrMem: "Script memory",
-        dMemFmt: "{0} used · peak {1} · free {2}",
+        dMemFmt: "{0} used ({1}) · peak {2} ({3}) · free {4}",
         dScrState: "Script state",
         dRunning: "running",
         dStopped: "stopped",
@@ -281,8 +285,9 @@ if (typeof document !== "undefined")
     };
     var LANG_KEY = "shabbat_lang"; // per browser; the device does not store it
     var LANG, L;
-    function tr(s, a, b, c) {
-      return s.replace("{0}", a).replace("{1}", b).replace("{2}", c);
+    function tr(s) {
+      for (var i = 1; i < arguments.length; i++) s = s.replace("{" + (i - 1) + "}", arguments[i]);
+      return s;
     }
     function setLang(lang, save) {
       LANG = I18N[lang] ? lang : "en";
@@ -727,13 +732,38 @@ if (typeof document !== "undefined")
           mi = Math.floor((sec % 3600) / 60);
         return (dd ? tr(L.upDays, dd) : "") + tr(L.upHM, hh, mi);
       }
+      function kb(n) {
+        // LRI ... PDI keeps "94.7 KB" in that order inside Hebrew text
+        var v = (n < 102400 ? (n / 1024).toFixed(1) : Math.round(n / 1024)) + " KB";
+        return "\u2066" + v + "\u2069";
+      }
+      function pct(n, total) {
+        return total ? Math.round((n * 100) / total) + "%" : "—";
+      }
+      function ofTotal(free, total) {
+        return total ? tr(L.dOfFmt, kb(free), kb(total), pct(free, total)) : kb(free);
+      }
+      // mem_free is the free part of the JS pool shared by all running scripts; with only
+      // the controller running (shabbat_ui never runs) used + free is the whole pool
+      var pool = d.scr.mem_used + d.scr.mem_free;
       var rows = [
         [L.dDevice, d.info.model + " · " + d.info.id],
         [L.dFirmware, d.info.ver],
         [L.dUptime, up(d.sys.uptime)],
         [L.dLastSync, d.sys.last_sync_ts ? full(d.sys.last_sync_ts) : L.dNeverSynced],
-        [L.dRamFree, Math.round(d.sys.ram_free / 1024) + " KB"],
-        [L.dScrMem, tr(L.dMemFmt, d.scr.mem_used, d.scr.mem_peak, d.scr.mem_free)],
+        [L.dRamFree, ofTotal(d.sys.ram_free, d.sys.ram_size)],
+        [L.dStorage, ofTotal(d.sys.fs_free, d.sys.fs_size)],
+        [
+          L.dScrMem,
+          tr(
+            L.dMemFmt,
+            kb(d.scr.mem_used),
+            pct(d.scr.mem_used, pool),
+            kb(d.scr.mem_peak),
+            pct(d.scr.mem_peak, pool),
+            kb(d.scr.mem_free)
+          )
+        ],
         [L.dScrState, d.scr.running ? L.dRunning : L.dStopped],
         [L.dErrors, d.scr.error_msg || (d.scr.errors && d.scr.errors.join(", ")) || L.none],
         [L.dLastSrc, d.sw.source + (d.sw.tag ? " (" + d.sw.tag + ")" : "")],
@@ -1369,7 +1399,7 @@ if (typeof document !== "undefined")
       .slot.offev { background: #F3F4F6 }
       .slot.offev .tm { color: #374151 }
       .drow { padding: 4px 0; border-top: 1px solid #EEF1F5 }
-      .dv { font-size: 13px; text-align: end; direction: ltr; unicode-bidi: isolate; word-break: break-all }
+      .dv { font-size: 13px; text-align: end; unicode-bidi: isolate; overflow-wrap: anywhere }
       .warn.col { display: flex; flex-direction: column; gap: 6px }
       button:focus-visible, input:focus-visible { outline: 2px solid #1D4ED8; outline-offset: 2px }
     `;

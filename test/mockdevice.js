@@ -107,7 +107,10 @@ http
         return json(res, 200, {
           uptime: 98765,
           last_sync_ts: now - 300,
+          ram_size: 266592, // values from a real Pro 1
           ram_free: 96996,
+          fs_size: 524288,
+          fs_free: 94208,
           unixtime: now
         });
       if (u.pathname === "/rpc/Script.GetStatus")
