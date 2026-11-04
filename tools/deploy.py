@@ -3,7 +3,7 @@
 # requires-python = ">=3.10"
 # dependencies = []
 # ///
-"""Upgrade the Shabbat elevator scripts on a Shelly over its RPC API.
+"""Upgrade the Shabbat controller scripts on a Shelly over its RPC API.
 
     python3 tools/deploy.py 192.168.1.50
     python3 tools/deploy.py shelly-1-pro-2.example.com --password secret
@@ -31,7 +31,9 @@ import urllib.request
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 UI_NAME = "shabbat_ui"            # the page loader looks the UI script up by this exact name
-CTRL_PREFIX = "shabbat_elevator"  # any script whose name starts with this is the controller
+CTRL_NAME = "shabbat_controller"
+# scripts whose name starts with one of these are the controller (the first is the old name)
+CTRL_PREFIXES = ("shabbat_controller", "shabbat_elevator")
 CHUNK = 1024                      # characters per Script.PutCode call
 # Some reverse proxies / WAFs block Python's default "Python-urllib" user agent.
 USER_AGENT = "shabbat-deploy/1.0"
@@ -173,7 +175,7 @@ def main():
                     help="device password (or set SHELLY_PASSWORD)")
     ap.add_argument("--build", action="store_true", help="run tools/build.py first")
     ap.add_argument("--diag", action="store_true",
-                    help="install dist/shabbat_elevator_diag.js (debug/memory logging) as the controller")
+                    help="install dist/shabbat_controller_diag.js (debug/memory logging) as the controller")
     ap.add_argument("--no-ui", action="store_true", help="do not touch the shabbat_ui script")
     ap.add_argument("--restart", action="store_true",
                     help="restart the controller even if its code is unchanged")
@@ -182,7 +184,7 @@ def main():
 
     if args.build:
         subprocess.run([sys.executable, os.path.join(ROOT, "tools", "build.py")], check=True)
-    ctrl_code = read_dist("shabbat_elevator_diag.js" if args.diag else "shabbat_elevator.js")
+    ctrl_code = read_dist("shabbat_controller_diag.js" if args.diag else "shabbat_controller.js")
     ui_code = None if args.no_ui else read_dist("shabbat_ui.js")
 
     dev = Shelly(args.host, args.password)
@@ -192,8 +194,8 @@ def main():
         print("  warning: device has no password set")
 
     scripts = dev.call("Script.List")["scripts"]
-    ctrl = find_or_create(dev, scripts, lambda n: n.startswith(CTRL_PREFIX),
-                          CTRL_PREFIX, args.dry_run)
+    ctrl = find_or_create(dev, scripts, lambda n: n.startswith(CTRL_PREFIXES),
+                          CTRL_NAME, args.dry_run)
     ui = None if args.no_ui else find_or_create(dev, scripts, lambda n: n == UI_NAME,
                                                 UI_NAME, args.dry_run)
 
@@ -212,6 +214,10 @@ def main():
         dev.call("Script.SetConfig", {"id": ui["id"], "config": {"enable": False}})
         print("  settings page script stopped / run-on-startup disabled (it must not run)")
 
+    if ctrl["name"] != CTRL_NAME and ctrl["name"].startswith("shabbat_elevator"):
+        dev.call("Script.SetConfig", {"id": ctrl["id"], "config": {"name": CTRL_NAME}})
+        print(f"  controller: renamed '{ctrl['name']}' -> '{CTRL_NAME}'")
+        ctrl["name"] = CTRL_NAME
     if not ctrl.get("enable"):
         dev.call("Script.SetConfig", {"id": ctrl["id"], "config": {"enable": True}})
         print("  controller: enabled run on startup")

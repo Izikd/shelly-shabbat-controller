@@ -1,4 +1,4 @@
-// Fake Shelly for UI testing: runs dist/shabbat_elevator.js in a VM with mocked
+// Fake Shelly for UI testing: runs dist/shabbat_controller.js in a VM with mocked
 // script APIs and serves the endpoints the browser uses:
 //   GET  /script/1/ui            loader page (from the script's HTTPServer endpoint)
 //   GET  /rpc/Script.List        -> script 1 + "shabbat_ui" (id 2)
@@ -8,7 +8,7 @@
 "use strict";
 const fs = require("fs"), path = require("path"), vm = require("vm"), http = require("http");
 const ROOT = path.join(__dirname, "..");
-const CODE = fs.readFileSync(path.join(ROOT, "dist/shabbat_elevator.js"), "utf8");
+const CODE = fs.readFileSync(path.join(ROOT, "dist/shabbat_controller.js"), "utf8");
 const UI = Buffer.from(fs.readFileSync(path.join(ROOT, "dist/shabbat_ui.js"), "utf8"), "utf8");
 const port = +process.argv[2] || 8099;
 let now = +process.argv[3] || Math.floor(Date.now() / 1000);
@@ -53,7 +53,7 @@ http.createServer((req, res) => {
     if (u.pathname === "/rpc/Script.GetStatus") return json(res, 200, { id: 1, running: true, mem_used: 15890, mem_peak: 21800, mem_free: 8400 });
     if (u.pathname === "/rpc/Switch.GetStatus") return json(res, 200, { id: 0, output: dev.relay, source: dev.src || "init", tag: dev.tag || null, temperature: { tC: 33.1 } });
     if (u.pathname === "/rpc/Switch.Set") { dev.relay = u.searchParams.get("on") === "true"; dev.src = "WS_in"; dev.tag = null; return json(res, 200, { was_on: !dev.relay }); }
-    if (u.pathname === "/rpc/Script.List") return json(res, 200, { scripts: [{ id: 1, name: "shabbat_elevator", enable: true, running: true }, { id: 2, name: "shabbat_ui", enable: false, running: false }] });
+    if (u.pathname === "/rpc/Script.List") return json(res, 200, { scripts: [{ id: 1, name: "shabbat_controller", enable: true, running: true }, { id: 2, name: "shabbat_ui", enable: false, running: false }] });
     if (u.pathname === "/rpc/Script.GetCode") {
       const src = u.searchParams.get("id") === "1" ? Buffer.from(CODE, "utf8") : UI;
       let off = +u.searchParams.get("offset") || 0, end = Math.min(src.length, off + 2000);

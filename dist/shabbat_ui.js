@@ -286,7 +286,7 @@ var body=S.tab==="status"?viewStatus():(S.tab==="timers"?viewTimers():(S.tab==="
 var d=dirty();
 var app=h("div",{cls:"app"},
 h("header",null,
-h("div",{cls:"line sb"},h("div",{cls:"col0"},h("h1",null,"מעלית שבת"),h("span",{cls:"s"},"Shelly · סקריפט "+ID)),
+h("div",{cls:"line sb"},h("div",{cls:"col0"},h("h1",null,"שעון שבת"),h("span",{cls:"s"},"Shelly · סקריפט "+ID)),
 h("span",{cls:"relay"+(st&&st.relay?" on":"")},relay)),
 h("div",{cls:"tabs",role:"tablist"},tabs.map(function(t){
 return h("button",{role:"tab","aria-selected":S.tab===t[0]?"true":"false",cls:S.tab===t[0]?"sel":"",
@@ -339,7 +339,7 @@ var css="body{margin:0;background:#F3F5F8;color:#16202A;font-family:Heebo,system
 ".slot.offev{background:#F3F4F6}.slot.offev .tm{color:#374151}.drow{padding:4px 0;border-top:1px solid #EEF1F5}.dv{font-size:13px;text-align:left;direction:ltr;unicode-bidi:isolate;word-break:break-all}.warn.col{display:flex;flex-direction:column;gap:6px}"+
 "button:focus-visible,input:focus-visible{outline:2px solid #1D4ED8;outline-offset:2px}";
 document.head.appendChild(h("style",null,css));
-document.title="מעלית שבת";
+document.title="שעון שבת";
 render();
 refresh();
 preview();

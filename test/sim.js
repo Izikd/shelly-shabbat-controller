@@ -1,12 +1,12 @@
-// Node simulator for dist/shabbat_elevator.js - mocks the Shelly script APIs.
-// Usage: node test/sim.js   (BUILD=shabbat_elevator_diag.js for the diag build, QUICK=1 to skip the long sweep)
+// Node simulator for dist/shabbat_controller.js - mocks the Shelly script APIs.
+// Usage: node test/sim.js   (BUILD=shabbat_controller_diag.js for the diag build, QUICK=1 to skip the long sweep)
 "use strict";
 const fs = require("fs");
 const path = require("path");
 const vm = require("vm");
 
 const ROOT = path.join(__dirname, "..");
-const CODE = fs.readFileSync(path.join(ROOT, "dist", process.env.BUILD || "shabbat_elevator.js"), "utf8");
+const CODE = fs.readFileSync(path.join(ROOT, "dist", process.env.BUILD || "shabbat_controller.js"), "utf8");
 // Reference windows written by tools/gen_table.py: [start, end, kind 1=Shabbat 2=Yom Tov 3=both]
 const WINDOWS = JSON.parse(fs.readFileSync(path.join(ROOT, "test/windows.json"), "utf8"));
 

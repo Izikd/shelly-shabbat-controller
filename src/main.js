@@ -1,5 +1,5 @@
 // =============================================================================
-// Shabbat Elevator controller for Shelly Pro 1 (Gen2 Pro / Gen3, firmware 2.0+)
+// Shabbat controller for Shelly (Gen2+ with a relay, firmware 2.0+; developed on a Pro 1)
 //
 // Turns switch:0 on during configured timers inside Shabbat & Yom Tov windows
 // (Shabbat + Yom Tov). Windows come from the embedded table (no internet).
@@ -29,7 +29,8 @@ let CFG = {
   switchId: 0,
   tickMs: 15000,
   failState: false,       // relay state when the clock is not synced
-  kvsKey: "shabbat_elev_cfg",
+  kvsKey: "shabbat_elev_cfg",  // KVS key names kept from the first version: renaming
+                                // them would drop the saved timers and log
   logKey: "shabbat_elev_log",
   logMax: 15,
   tag: "shabbat",          // Switch.Set tag: tells our commands from manual ones
@@ -432,7 +433,7 @@ function onRpcPreview(req, params) { enqueue(doPreview, req, params); }
 // ---------------- UI loader page ----------------
 // The browser fetches the UI code from the stopped script named "shabbat_ui".
 let UI_A = '<!doctype html><html lang="he" dir="rtl"><head><meta charset="utf-8">' +
-  '<meta name="viewport" content="width=device-width,initial-scale=1"><title>מעלית שבת</title></head>' +
+  '<meta name="viewport" content="width=device-width,initial-scale=1"><title>שעון שבת</title></head>' +
   '<body style="font-family:system-ui,sans-serif"><div id="app">טוען…</div><script>window.SE_ID=';
 let UI_B = ';(async function(){try{' +
   'let l=await (await fetch("/rpc/Script.List")).json();' +
@@ -477,7 +478,7 @@ let BOOT = [
   tick,
   function () {
     Timer.set(CFG.tickMs, true, tick);
-    console.log("Shabbat Elevator started. Windows:", TBL_N, "UI: /script/" + Shelly.getCurrentScriptId() + "/ui");
+    console.log("Shabbat controller started. Windows:", TBL_N, "UI: /script/" + Shelly.getCurrentScriptId() + "/ui");
   }
 ];
 

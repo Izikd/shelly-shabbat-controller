@@ -1,15 +1,43 @@
-# Shabbat Elevator (Shelly Pro 1)
+# Shabbat Controller for Shelly
 
-Drives the Shabbat-elevator contactor from a Shelly Pro 1 (firmware 2.0+), using an
-embedded table of Shabbat & Yom Tov windows (candle lighting to havdalah, Israel, 2025-2030). No internet needed
-once the clock is synced. Settings are edited on a web page served by the Shelly itself.
+A Shabbat clock (שעון שבת) that runs on the Shelly itself: it switches the relay on during
+timers you set inside Shabbat & Yom Tov windows (candle lighting to havdalah, Israel,
+2025-2030, from an embedded table). Use it for anything on a relay - a Shabbat elevator,
+lights, a hot plate, air conditioning. No internet or cloud needed once the clock is synced.
+Settings are edited on a web page served by the Shelly.
+
+Developed and tested on a **Shelly Pro 1** (firmware 2.0.3), where it drives a Shabbat elevator.
+
+## Supported devices
+Any Shelly that meets all of these should work; only the Pro 1 has been tested on hardware.
+
+| Requirement | Why |
+|---|---|
+| Gen2 or newer (Plus, Pro, Gen3, Gen4) with scripting | the controller is a Shelly script. Gen1 devices have no scripting |
+| **Firmware 2.0.0 or newer** | the settings page and API use `Script.addRpcHandler`, added in 2.0.0 |
+| A relay output (`Switch` component) as `switch:0` | the controller switches `switch:0` only. Two-channel devices must be in switch mode, not cover mode. Dimmers / RGBW (`Light` component) are not supported |
+| 2 free script slots, about 25 KB of free script memory | one running script (peak ~17-21 KB on the Pro 1) plus `shabbat_ui`, which is stored but never started. Script memory is shared, so other running scripts count too |
+| Clock sync (SNTP) after every power-up | the device needs the time to know where it is in the table; until it is synced the relay stays off |
+
+Devices that fit (from the Shelly API docs; untested unless marked):
+- **Pro**: Pro 1 (tested), Pro 1PM, Pro 2, Pro 2PM (switch mode), Pro 3, Pro 4PM
+- **Plus (Gen2)**: Plus 1, Plus 1PM, Plus 1 Mini, Plus 1PM Mini, Plus 2PM (switch mode),
+  Plus Plug S / IT / UK / US, Plus Uni
+- **Gen3**: 1, 1PM, 1L, 2L, 2PM (switch mode), 1 Mini, 1PM Mini, Plug S, Plug M, Outdoor Plug S
+- **Gen4**: 1, 1PM, 1L, 2L, 2PM (switch mode), 1 Mini, 1PM Mini, Plug US, PowerStrip
+
+Not supported: Gen1 devices, Shelly AZ Plug (no scripting), dimmers and RGBW controllers,
+battery-powered sensors. Firmware 2.0 availability for a given model is set by Shelly - check
+the device's firmware page. Before relying on a new model, run `tools/deploy.py` and check the
+memory it prints, then use **test time** on the settings page to step through a window.
 
 ## Install (two scripts)
-1. **Controller** - Scripts -> Create script, any name (e.g. `shabbat_elevator`),
-   paste `dist/shabbat_elevator.js`, Save, enable **Run on startup**, **Start**.
+1. **Controller** - Scripts -> Create script, any name (e.g. `shabbat_controller`),
+   paste `dist/shabbat_controller.js`, Save, enable **Run on startup**, **Start**.
 2. **Settings page** - Scripts -> Create script named exactly **`shabbat_ui`**,
    paste `dist/shabbat_ui.js`, Save. **Do not start it and do not enable Run on startup.**
    It only stores the page code (the browser reads it with `Script.GetCode`).
+   (Or let `tools/deploy.py` below do steps 1-2.)
 3. Switch settings -> power-on default: **Off** (fail-safe if the controller is ever stopped).
 4. Open `http://<shelly-ip>/script/<controller id>/ui` (the console prints the exact URL).
 
@@ -21,8 +49,8 @@ uv run tools/deploy.py 192.168.1.50                    # LAN IP
 uv run tools/deploy.py shelly.example.com --dry-run    # domain; only show what would change
 uv run tools/deploy.py 192.168.1.50 --build            # rebuild dist/ first
 ```
-It finds the controller (name starting `shabbat_elevator`) and `shabbat_ui` scripts, creating
-them if missing, uploads only scripts whose code differs, verifies each upload by reading it back,
+It finds the controller (name starting `shabbat_controller`, or the old `shabbat_elevator`,
+which it renames) and `shabbat_ui` scripts, creating them if missing, uploads only scripts whose code differs, verifies each upload by reading it back,
 restarts the controller, keeps `shabbat_ui` stopped, and prints memory use and the next window.
 Re-running is harmless. Options: `--password` (or `SHELLY_PASSWORD`), `--diag` (install the
 diagnostic build), `--no-ui`, `--restart`.
@@ -60,7 +88,7 @@ The controller deletes any virtual components left on the device by older versio
   `uv run tools/gen_table.py --years 2025 ... 2035` (`--lat/--lon` for another city), then
   `uv run tools/build.py`. The tools declare their dependencies in a PEP 723 header, so uv
   installs hdate on the fly; without uv, `pip install hdate` and run them with `python3`
-- `tools/build.py` -> `dist/shabbat_elevator.js`, `dist/shabbat_elevator_diag.js`, `dist/shabbat_ui.js`
+- `tools/build.py` -> `dist/shabbat_controller.js`, `dist/shabbat_controller_diag.js`, `dist/shabbat_ui.js`
 - `tools/deploy.py` uploads `dist/` to a device (see "Upgrading from a computer")
 - `test/sim.js` device simulator (minute-by-minute relay sweep vs an independent reference)
 - `test/mockdevice.js` + `test/ui_test.js` fake Shelly + Playwright browser test of the page

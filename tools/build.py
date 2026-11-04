@@ -4,8 +4,8 @@
 # dependencies = []
 # ///
 """Combine src/main.js + src/table.js into single installable files:
-     dist/shabbat_elevator.js       normal build
-     dist/shabbat_elevator_diag.js  staged boot + memory logs + debug logging
+     dist/shabbat_controller.js       normal build
+     dist/shabbat_controller_diag.js  staged boot + memory logs + debug logging
 The Shelly JS engine keeps script source in RAM, so the body is compacted
 (indentation, comments, blank lines removed)."""
 import os
@@ -68,21 +68,21 @@ def squeeze(line):
 
 def compact(src):
     lines = [squeeze(strip_line(l)) for l in src.split("\n")]
-    return "// Shabbat Elevator - built by tools/build.py\n" + "\n".join(l for l in lines if l) + "\n"
+    return "// Shabbat controller - built by tools/build.py\n" + "\n".join(l for l in lines if l) + "\n"
 
 
 full = main.replace("//@@TABLE@@", table)
 variants = {
-    "shabbat_elevator.js": full,
-    "shabbat_elevator_diag.js": full.replace("  debug: false,", "  debug: true,").replace("  diag: false ", "  diag: true "),
+    "shabbat_controller.js": full,
+    "shabbat_controller_diag.js": full.replace("  debug: false,", "  debug: true,").replace("  diag: false ", "  diag: true "),
 }
-assert "diag: true" in variants["shabbat_elevator_diag.js"]
+assert "diag: true" in variants["shabbat_controller_diag.js"]
 os.makedirs(os.path.join(root, "dist"), exist_ok=True)
 variants["shabbat_ui.js"] = open(os.path.join(root, "src/ui.js"), encoding="utf-8").read()
 for name, src in variants.items():
     out = compact(src)
     if name == "shabbat_ui.js":
-        out = out.replace("// Shabbat Elevator - built by tools/build.py", "// shabbat_ui - DO NOT START this script. It only stores the settings page code, loaded by the browser from /script/<id>/ui", 1)
+        out = out.replace("// Shabbat controller - built by tools/build.py", "// shabbat_ui - DO NOT START this script. It only stores the settings page code, loaded by the browser from /script/<id>/ui", 1)
     dst = os.path.join(root, "dist", name)
     open(dst, "w", encoding="utf-8").write(out)
     print(f"{dst}: {len(out.encode())} bytes")

@@ -1,4 +1,4 @@
-// Shabbat Elevator - built by tools/build.py
+// Shabbat controller - built by tools/build.py
 let CFG={
 switchId:0,
 tickMs:15000,
@@ -8,8 +8,8 @@ logKey:"shabbat_elev_log",
 logMax:15,
 tag:"shabbat",
 maxTimers:12,
-debug:true,
-diag:true
+debug:false,
+diag:false
 };
 let DEFAULT_TIMERS=[[0,15,30,0,0,1],[1,720,60,0,0,1],[2,-40,40,0,0,1]];
 let TBL_BASE=1735689600;
@@ -342,7 +342,7 @@ function onRpcGet(req,params){enqueue(doGet,req,params);}
 function onRpcSet(req,params){enqueue(doSet,req,params);}
 function onRpcPreview(req,params){enqueue(doPreview,req,params);}
 let UI_A='<!doctype html><html lang="he" dir="rtl"><head><meta charset="utf-8">'+
-'<meta name="viewport" content="width=device-width,initial-scale=1"><title>מעלית שבת</title></head>'+
+'<meta name="viewport" content="width=device-width,initial-scale=1"><title>שעון שבת</title></head>'+
 '<body style="font-family:system-ui,sans-serif"><div id="app">טוען…</div><script>window.SE_ID=';
 let UI_B=';(async function(){try{'+
 'let l=await (await fetch("/rpc/Script.List")).json();'+
@@ -383,7 +383,7 @@ Script.addRpcHandler("ShabbatPreview",onRpcPreview);
 tick,
 function(){
 Timer.set(CFG.tickMs,true,tick);
-console.log("Shabbat Elevator started. Windows:",TBL_N,"UI: /script/"+Shelly.getCurrentScriptId()+"/ui");
+console.log("Shabbat controller started. Windows:",TBL_N,"UI: /script/"+Shelly.getCurrentScriptId()+"/ui");
 }
 ];
 function bootNext(){
