@@ -22,7 +22,11 @@ import { minify } from "terser";
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const read = (p) => readFileSync(join(ROOT, p), "utf8");
 
-const FORMAT = { comments: false, ascii_only: false }; // the Shelly rejects \u escapes: keep UTF-8
+// Both outputs must be pure ASCII: Script.GetCode is read in small byte ranges (large reads
+// can reboot the device) and the firmware garbles a UTF-8 character split across two ranges.
+// The page is escaped to ASCII (\uXXXX is fine in the browser); the controller cannot be
+// (the Shelly engine rejects \u escapes), so it must not contain non-ASCII text at all.
+const FORMAT = { comments: false, ascii_only: false };
 
 async function controller(src) {
   const out = await minify(src, {
@@ -49,7 +53,7 @@ async function ui(src) {
   const out = await minify(squeezeCss(src), {
     compress: { ecma: 2020 },
     mangle: { toplevel: true }, // runs inside new Function(), nothing outside sees its names
-    format: { ...FORMAT, ecma: 2020 }
+    format: { ...FORMAT, ecma: 2020, ascii_only: true }
   });
   return (
     "// shabbat_ui - DO NOT START this script. It only stores the settings page code, " +
@@ -76,6 +80,14 @@ const outputs = {
   "shabbat_controller_diag.js": await controller(diag),
   "shabbat_ui.js": await ui(read("src/ui.js"))
 };
+
+for (const [name, code] of Object.entries(outputs)) {
+  const m = code.match(/[^\x00-\x7f]/);
+  if (m) {
+    const at = code.indexOf(m[0]);
+    throw new Error(`${name}: non-ASCII text ${JSON.stringify(code.slice(at - 30, at + 10))}`);
+  }
+}
 
 mkdirSync(join(ROOT, "dist"), { recursive: true });
 for (const [name, code] of Object.entries(outputs)) {

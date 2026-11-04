@@ -978,7 +978,7 @@ if (typeof document !== "undefined")
         off = 0,
         te = new TextEncoder();
       function next() {
-        fetch("/rpc/Script.GetCode?id=" + ID + "&offset=" + off)
+        fetch("/rpc/Script.GetCode?id=" + ID + "&len=4096&offset=" + off) // small reads: see main.js
           .then(function (r) {
             return r.json();
           })

@@ -546,18 +546,19 @@ function onRpcPreview(req, params) {
 }
 
 // ---------------- UI loader page ----------------
-// The browser fetches the UI code from the stopped script named "shabbat_ui".
+// The browser fetches the UI code from the stopped script named "shabbat_ui", 4 KB at a time:
+// one large Script.GetCode read (~28 KB) rebooted a Pro 1.
 let UI_A =
   // language-neutral: the page code sets lang, dir and title (Hebrew or English)
   '<!doctype html><html><head><meta charset="utf-8">' +
   '<meta name="viewport" content="width=device-width,initial-scale=1"><title>Shabbat</title></head>' +
-  '<body style="font-family:system-ui,sans-serif"><div id="app">…</div><script>window.SE_ID=';
+  '<body style="font-family:system-ui,sans-serif"><div id="app">...</div><script>window.SE_ID=';
 let UI_B =
   ";(async function(){try{" +
   'let l=await (await fetch("/rpc/Script.List")).json();' +
   'let u=l.scripts.find(function(s){return s.name==="shabbat_ui"});' +
   'if(!u)throw new Error("script shabbat_ui not found");' +
-  'let c="",o=0,te=new TextEncoder();for(;;){let r=await (await fetch("/rpc/Script.GetCode?id="+u.id+"&offset="+o)).json();' +
+  'let c="",o=0,te=new TextEncoder();for(;;){let r=await (await fetch("/rpc/Script.GetCode?id="+u.id+"&len=4096&offset="+o)).json();' +
   "c+=r.data;o+=te.encode(r.data).length;if(!r.left||!r.data.length)break;}" +
   'new Function(c)();}catch(e){document.getElementById("app").textContent="UI load failed: "+e.message;}})();' +
   "</script></body></html>";

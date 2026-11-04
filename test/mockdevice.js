@@ -141,9 +141,12 @@ http
         });
       if (u.pathname === "/rpc/Script.GetCode") {
         const src = u.searchParams.get("id") === "1" ? Buffer.from(CODE, "utf8") : UI;
+        // like the device: byte ranges, a UTF-8 character split across ranges comes back as
+        // U+FFFD. Large reads rebooted a real Pro 1, so refuse any read without a small len.
+        const len = +u.searchParams.get("len");
+        if (!len || len > 8192) return json(res, 400, { code: -103, message: "read too large" });
         let off = +u.searchParams.get("offset") || 0,
-          end = Math.min(src.length, off + 2000);
-        while (end < src.length && (src[end] & 0xc0) === 0x80) end++; // don't split a UTF-8 character
+          end = Math.min(src.length, off + len);
         const chunk = src.subarray(off, end);
         return json(res, 200, { data: chunk.toString("utf8"), left: src.length - end });
       }

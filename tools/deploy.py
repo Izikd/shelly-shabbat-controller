@@ -19,6 +19,7 @@ HTTP digest auth (user `admin`), as Shelly Gen2+ devices expect.
 """
 import argparse
 import hashlib
+import http.client
 import json
 import os
 import re
@@ -41,6 +42,10 @@ USER_AGENT = "shabbat-deploy/1.0"
 
 class RpcError(Exception):
     pass
+
+
+class NetError(RpcError):
+    """No usable reply (timeout, dropped connection): the call may or may not have run."""
 
 
 class Shelly:
@@ -85,7 +90,21 @@ class Shelly:
                 f'uri="{uri}", algorithm={algo}, response="{resp}", qop=auth, nc={nc}, '
                 f'cnonce="{cnonce}"')
 
-    def call(self, method, params=None, _retry=True):
+    def call(self, method, params=None, _retry=True, net_retries=3):
+        """One RPC. Network failures (timeouts, dropped connections - common through a tunnel)
+        are retried; pass net_retries=0 for calls that must not be repeated blindly."""
+        for attempt in range(net_retries + 1):
+            try:
+                return self._call(method, params, _retry)
+            except (urllib.error.URLError, TimeoutError, ConnectionError,
+                    http.client.HTTPException) as e:
+                if isinstance(e, urllib.error.HTTPError):
+                    raise RpcError(f"{method}: {e}") from e
+                if attempt == net_retries:
+                    raise NetError(f"{method}: {getattr(e, 'reason', e)}") from e
+                time.sleep(2 ** attempt)
+
+    def _call(self, method, params, _retry):
         self._id += 1
         # ensure_ascii=False: the Shelly rejects \u escapes in script code, send raw UTF-8.
         body = json.dumps({"id": self._id, "method": method, "params": params or {}},
@@ -103,7 +122,7 @@ class Shelly:
                     raise SystemExit("error: the device requires a password (use --password)")
                 self.auth_header = self._digest(e.headers.get("WWW-Authenticate", ""),
                                                 uri=urllib.parse.urlparse(self.url).path)
-                return self.call(method, params, _retry=False)
+                return self._call(method, params, _retry=False)
             if e.code == 401:
                 raise SystemExit("error: the device rejected the password")
             raise RpcError(f"{method}: HTTP {e.code} {e.reason}")
@@ -112,20 +131,51 @@ class Shelly:
         return res.get("result")
 
     def get_code(self, sid):
-        # offset/len are in bytes; ask for big pieces so a UTF-8 character is rarely split.
+        # offset/len are in bytes. Small pieces: one ~28 KB read rebooted a Pro 1. The built
+        # scripts are pure ASCII, so a piece never splits a character (older UTF-8 code on the
+        # device may read back garbled, which only means it differs and gets replaced).
         raw, offset = b"", 0
         while True:
-            r = self.call("Script.GetCode", {"id": sid, "offset": offset, "len": 65536})
+            r = self.call("Script.GetCode", {"id": sid, "offset": offset, "len": 4096})
             piece = r["data"].encode("utf-8")
             raw += piece
             offset += len(piece)
             if not r.get("left") or not piece:
                 return raw.decode("utf-8", errors="replace")
 
-    def put_code(self, sid, code):
-        for i in range(0, len(code), CHUNK):
-            self.call("Script.PutCode", {"id": sid, "code": code[i:i + CHUNK], "append": i > 0})
-            print(f"\r    uploaded {min(i + CHUNK, len(code))}/{len(code)} chars", end="", flush=True)
+    def code_len(self, sid):
+        """Length of the script's code on the device, in bytes."""
+        r = self.call("Script.GetCode", {"id": sid, "offset": 0, "len": 1})
+        return len(r["data"].encode("utf-8")) + (r.get("left") or 0)
+
+    def put_code(self, sid, code, max_failures=20):
+        """Upload in chunks. If a reply is lost, the chunk may or may not have been applied, so
+        an appended chunk is never simply re-sent (it could be doubled): the upload resumes from
+        the length the device reports. The built scripts are ASCII, so bytes == characters."""
+        if not code.isascii():
+            raise SystemExit("error: refusing to upload non-ASCII code (run `npm run build`)")
+        i, failures = 0, 0
+        while i < len(code):
+            piece = code[i:i + CHUNK]
+            try:
+                self.call("Script.PutCode", {"id": sid, "code": piece, "append": i > 0},
+                          net_retries=0)
+                i += len(piece)
+                print(f"\r    uploaded {i}/{len(code)} chars", end="", flush=True)
+            except NetError as e:
+                failures += 1
+                print(f"\n    lost reply at {i} chars ({e}); checking the device", flush=True)
+                if failures > max_failures:
+                    raise
+                time.sleep(min(2 ** failures, 10))
+                if i == 0:
+                    continue  # the first chunk replaces the code: safe to send again
+                have = self.code_len(sid)
+                if have not in (i, i + len(piece)):
+                    print(f"    device has {have} chars, expected {i} or {i + len(piece)}; restarting")
+                    i = 0
+                else:
+                    i = have
         print()
 
 
@@ -163,7 +213,7 @@ def deploy_one(dev, script, code, label, restart, dry_run):
     dev.put_code(script["id"], code)
     if dev.get_code(script["id"]) != code:
         raise SystemExit(f"error: {label} verification failed - code on device differs from dist/. "
-                         "Re-run the deploy; the controller is left stopped.")
+                         "Re-run the deploy.")
     print("    verified")
     return True
 
@@ -199,9 +249,20 @@ def main():
     ui = None if args.no_ui else find_or_create(dev, scripts, lambda n: n == UI_NAME,
                                                 UI_NAME, args.dry_run)
 
-    ctrl_changed = deploy_one(dev, ctrl, ctrl_code, "controller", True, args.dry_run)
+    # The page first: uploading it does not touch the running controller. The controller is
+    # stopped only for its own upload; if that fails, try to start it again before giving up.
     if ui_code is not None:
         deploy_one(dev, ui, ui_code, "settings page", False, args.dry_run)
+    try:
+        ctrl_changed = deploy_one(dev, ctrl, ctrl_code, "controller", True, args.dry_run)
+    except BaseException:
+        if not args.dry_run:
+            try:
+                dev.call("Script.Start", {"id": ctrl["id"]})
+                print("  controller start attempted after the failure - check its state")
+            except Exception as e:
+                print(f"  CONTROLLER IS STOPPED ({e}) - re-run the deploy")
+        raise
 
     if args.dry_run:
         print("Dry run - nothing written.")
