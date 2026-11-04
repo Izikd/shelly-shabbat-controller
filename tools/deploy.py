@@ -1,4 +1,8 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.10"
+# dependencies = []
+# ///
 """Upgrade the Shabbat elevator scripts on a Shelly over its RPC API.
 
     python3 tools/deploy.py 192.168.1.50

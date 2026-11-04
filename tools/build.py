@@ -1,4 +1,8 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.10"
+# dependencies = []
+# ///
 """Combine src/main.js + src/table.js into single installable files:
      dist/shabbat_elevator.js       normal build
      dist/shabbat_elevator_diag.js  staged boot + memory logs + debug logging

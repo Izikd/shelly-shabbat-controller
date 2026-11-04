@@ -1,11 +1,16 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.10"
+# dependencies = ["hdate>=1.2"]
+# ///
 """
 Generate the Shabbat & Yom Tov window table for the Shelly script
 (candle lighting -> havdalah, Israel, computed with hdate).
 
-    pip install -r tools/requirements.txt
-    python3 tools/gen_table.py                                   # Petah Tikva, 2025-2030
-    python3 tools/gen_table.py --lat 31.778 --lon 35.235 --years 2026 2027 2028
+    uv run tools/gen_table.py                                    # Petah Tikva, 2025-2030
+    uv run tools/gen_table.py --lat 31.778 --lon 35.235 --years 2026 2027 2028
+
+uv installs hdate from the script header above into a cached environment.
 
 Writes:
   src/table.js        the table for the script, one compact encoded string

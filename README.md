@@ -14,11 +14,12 @@ once the clock is synced. Settings are edited on a web page served by the Shelly
 4. Open `http://<shelly-ip>/script/<controller id>/ui` (the console prints the exact URL).
 
 ### Upgrading from a computer
-`tools/deploy.py` uploads `dist/` to the device over its RPC API (Python 3, standard library only):
+`tools/deploy.py` uploads `dist/` to the device over its RPC API (no dependencies;
+`python3 tools/deploy.py ...` works too):
 ```
-python3 tools/deploy.py 192.168.1.50                    # LAN IP
-python3 tools/deploy.py shelly.example.com --dry-run    # domain; only show what would change
-python3 tools/deploy.py 192.168.1.50 --build            # rebuild dist/ first
+uv run tools/deploy.py 192.168.1.50                    # LAN IP
+uv run tools/deploy.py shelly.example.com --dry-run    # domain; only show what would change
+uv run tools/deploy.py 192.168.1.50 --build            # rebuild dist/ first
 ```
 It finds the controller (name starting `shabbat_elevator`) and `shabbat_ui` scripts, creating
 them if missing, uploads only scripts whose code differs, verifies each upload by reading it back,
@@ -56,8 +57,9 @@ The controller deletes any virtual components left on the device by older versio
 - `src/main.js` controller, `src/ui.js` settings page, `src/table.js` generated table
 - `tools/gen_table.py` table generator (hdate; adds DST periods). Writes `src/table.js` and
   `test/windows.json` (the simulator's reference). To extend or move the table:
-  `pip install -r tools/requirements.txt`, `python3 tools/gen_table.py --years 2025 ... 2035`
-  (`--lat/--lon` for another city), then `python3 tools/build.py`
+  `uv run tools/gen_table.py --years 2025 ... 2035` (`--lat/--lon` for another city), then
+  `uv run tools/build.py`. The tools declare their dependencies in a PEP 723 header, so uv
+  installs hdate on the fly; without uv, `pip install hdate` and run them with `python3`
 - `tools/build.py` -> `dist/shabbat_elevator.js`, `dist/shabbat_elevator_diag.js`, `dist/shabbat_ui.js`
 - `tools/deploy.py` uploads `dist/` to a device (see "Upgrading from a computer")
 - `test/sim.js` device simulator (minute-by-minute relay sweep vs an independent reference)
