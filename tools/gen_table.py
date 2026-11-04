@@ -18,7 +18,7 @@ Writes:
   test/windows.json   the same windows as plain [start, end, kind] for test/sim.js
                       (kind 1 = Shabbat only, 2 = Yom Tov only, 3 = both)
 
-Run tools/build.py afterwards to rebuild dist/.
+Run `npm run build` afterwards to rebuild dist/.
 
 Encoding (8 chars per window, custom base64 alphabet):
   4 chars  start, minutes since TBL_BASE (2025-01-01 00:00 UTC)

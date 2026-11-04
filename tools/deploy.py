@@ -173,7 +173,7 @@ def main():
     ap.add_argument("host", help="device IP or domain, optionally with http:// or https://")
     ap.add_argument("--password", default=os.environ.get("SHELLY_PASSWORD"),
                     help="device password (or set SHELLY_PASSWORD)")
-    ap.add_argument("--build", action="store_true", help="run tools/build.py first")
+    ap.add_argument("--build", action="store_true", help="run `npm run build` first (needs `npm install`)")
     ap.add_argument("--diag", action="store_true",
                     help="install dist/shabbat_controller_diag.js (debug/memory logging) as the controller")
     ap.add_argument("--no-ui", action="store_true", help="do not touch the shabbat_ui script")
@@ -183,7 +183,7 @@ def main():
     args = ap.parse_args()
 
     if args.build:
-        subprocess.run([sys.executable, os.path.join(ROOT, "tools", "build.py")], check=True)
+        subprocess.run(["node", os.path.join(ROOT, "tools", "build.mjs")], check=True)
     ctrl_code = read_dist("shabbat_controller_diag.js" if args.diag else "shabbat_controller.js")
     ui_code = None if args.no_ui else read_dist("shabbat_ui.js")
 

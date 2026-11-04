@@ -28,18 +28,22 @@
 let CFG = {
   switchId: 0,
   tickMs: 15000,
-  failState: false,       // relay state when the clock is not synced
-  kvsKey: "shabbat_elev_cfg",  // KVS key names kept from the first version: renaming
-                                // them would drop the saved timers and log
+  failState: false, // relay state when the clock is not synced
+  kvsKey: "shabbat_elev_cfg", // KVS key names kept from the first version: renaming
+  // them would drop the saved timers and log
   logKey: "shabbat_elev_log",
   logMax: 15,
-  tag: "shabbat",          // Switch.Set tag: tells our commands from manual ones
+  tag: "shabbat", // Switch.Set tag: tells our commands from manual ones
   maxTimers: 12,
   debug: false,
-  diag: false            // staged boot + memory logs (set by the diag build)
+  diag: false // staged boot + memory logs (set by the diag build)
 };
 
-let DEFAULT_TIMERS = [[0, 15, 30, 0, 0, 1], [1, 720, 60, 0, 0, 1], [2, -40, 40, 0, 0, 1]];
+let DEFAULT_TIMERS = [
+  [0, 15, 30, 0, 0, 1],
+  [1, 720, 60, 0, 0, 1],
+  [2, -40, 40, 0, 0, 1]
+];
 
 //@@TABLE@@
 
@@ -47,17 +51,19 @@ let DEFAULT_TIMERS = [[0, 15, 30, 0, 0, 1], [1, 720, 60, 0, 0, 1], [2, -40, 40, 
 let ALPHA = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+-";
 let TBL_N = TBL.length / 8;
 
-let cfg = null;          // {t: timers, a: auto 0/1, s: skipped window start (0 = none)}
-let testTime = 0;        // test clock (UTC s), RAM only
-let saving = false, saveDirty = false;
+let cfg = null; // {t: timers, a: auto 0/1, s: skipped window start (0 = none)}
+let testTime = 0; // test clock (UTC s), RAM only
+let saving = false,
+  saveDirty = false;
 let lastWanted = null;
 let lastWindowIdx = -2;
-let status = {};         // last computed status (served by ShabbatGet)
-let manualHold = null;   // desired state when a manual switch was detected (null = none)
-let lastOut = null;      // last known relay output
-let lastUntil = 0;       // end of the ON interval the firmware auto-off timer was set for
-let logArr = [];         // relay events: "<minutes since TBL_BASE><1|0><cause>"
-let logSaving = false, logDirty = false;
+let status = {}; // last computed status (served by ShabbatGet)
+let manualHold = null; // desired state when a manual switch was detected (null = none)
+let lastOut = null; // last known relay output
+let lastUntil = 0; // end of the ON interval the firmware auto-off timer was set for
+let logArr = []; // relay events: "<minutes since TBL_BASE><1|0><cause>"
+let logSaving = false,
+  logDirty = false;
 
 function dbg(a, b) {
   if (CFG.debug) console.log("[dbg]", a, b === undefined ? "" : b);
@@ -87,7 +93,9 @@ function localToUtc(localSecs) {
   return u;
 }
 
-function pad2(n) { return (n < 10 ? "0" : "") + n; }
+function pad2(n) {
+  return (n < 10 ? "0" : "") + n;
+}
 
 function fmtTime(t) {
   let l = t + tzOffset(t);
@@ -116,11 +124,13 @@ function getWin(i) {
 
 // Index of first window whose end is after t (TBL_N if none)
 function findWin(t) {
-  let lo = 0, hi = TBL_N;
+  let lo = 0,
+    hi = TBL_N;
   while (lo < hi) {
     let mid = (lo + hi) >> 1;
     let w = getWin(mid);
-    if (w.e <= t) lo = mid + 1; else hi = mid;
+    if (w.e <= t) lo = mid + 1;
+    else hi = mid;
   }
   return lo;
 }
@@ -133,7 +143,10 @@ function pushClipped(list, s, e, w, label) {
   // sorted insert by start (Array.sort is not available on Shelly)
   let i = list.length;
   list.push(null);
-  while (i > 0 && list[i - 1].s > s) { list[i] = list[i - 1]; i--; }
+  while (i > 0 && list[i - 1].s > s) {
+    list[i] = list[i - 1];
+    i--;
+  }
   list[i] = { s: s, e: e, l: label };
 }
 
@@ -153,8 +166,16 @@ function windowPlan(w, tl) {
     if (v[3] === 2 && w.k === 1) continue;
     let lab = "" + (i + 1);
     let a = w.s;
-    if (v[0] === 0) { a = w.s + v[1] * 60; pushClipped(list, a, a + v[2] * 60, w, lab); continue; }
-    if (v[0] === 2) { a = w.e + v[1] * 60; pushClipped(list, a, a + v[2] * 60, w, lab); continue; }
+    if (v[0] === 0) {
+      a = w.s + v[1] * 60;
+      pushClipped(list, a, a + v[2] * 60, w, lab);
+      continue;
+    }
+    if (v[0] === 2) {
+      a = w.e + v[1] * 60;
+      pushClipped(list, a, a + v[2] * 60, w, lab);
+      continue;
+    }
     for (let d = d0 - 1; d <= d1; d++) {
       let k = d - d0;
       if (v[4] === 1 && k > 1) continue;
@@ -180,8 +201,19 @@ function windowPlan(w, tl) {
 // ---------------- Config ----------------
 function validTimer(v) {
   if (!v || v.length !== 6) return false;
-  for (let i = 0; i < 6; i++) if (typeof v[i] !== "number" || v[i] !== Math.floor(v[i])) return false;
-  if (v[0] < 0 || v[0] > 2 || v[2] < 0 || v[2] > 240 || v[3] < 0 || v[3] > 2 || v[4] < 0 || v[4] > 2) return false;
+  for (let i = 0; i < 6; i++)
+    if (typeof v[i] !== "number" || v[i] !== Math.floor(v[i])) return false;
+  if (
+    v[0] < 0 ||
+    v[0] > 2 ||
+    v[2] < 0 ||
+    v[2] > 240 ||
+    v[3] < 0 ||
+    v[3] > 2 ||
+    v[4] < 0 ||
+    v[4] > 2
+  )
+    return false;
   if (v[0] === 0 && (v[1] < 0 || v[1] > 180)) return false;
   if (v[0] === 1 && (v[1] < 0 || v[1] > 1439)) return false;
   if (v[0] === 2 && (v[1] < -180 || v[1] > 0)) return false;
@@ -201,15 +233,19 @@ function onKvsSaved(res, err, msg) {
 }
 
 function saveCfg() {
-  if (saving) { saveDirty = true; return; }
-  saving = true; saveDirty = false;
+  if (saving) {
+    saveDirty = true;
+    return;
+  }
+  saving = true;
+  saveDirty = false;
   Shelly.call("KVS.Set", { key: CFG.kvsKey, value: JSON.stringify(cfg) }, onKvsSaved);
 }
 
 // ---------------- Main loop ----------------
 // Ticks always start from a fresh timer callback (small JS stack on the device)
 let tickQueued = false;
-let replyQ = [];         // Set requests answered after the next tick (fresh status)
+let replyQ = []; // Set requests answered after the next tick (fresh status)
 function tickFromTimer() {
   tickQueued = false;
   tick();
@@ -232,7 +268,10 @@ function getNow() {
 }
 
 function onSwitchSet(res, err, msg) {
-  if (err) { console.log("Switch.Set failed:", err, msg); lastWanted = null; }
+  if (err) {
+    console.log("Switch.Set failed:", err, msg);
+    lastWanted = null;
+  }
 }
 
 // ---- event log (KVS, survives reboot) ----
@@ -241,8 +280,12 @@ function onLogSaved(res, err) {
   if (logDirty) saveLog();
 }
 function saveLog() {
-  if (logSaving) { logDirty = true; return; }
-  logSaving = true; logDirty = false;
+  if (logSaving) {
+    logDirty = true;
+    return;
+  }
+  logSaving = true;
+  logDirty = false;
   let str = "";
   for (let i = 0; i < logArr.length; i++) str += (i ? "," : "") + logArr[i];
   Shelly.call("KVS.Set", { key: CFG.logKey, value: str }, onLogSaved);
@@ -284,47 +327,75 @@ function applyRelay(on, until, cause) {
   lastWanted = on;
   lastUntil = auto ? until : 0;
   if (!needSet) return;
-  if (st.output !== on) { addLog(on, cause); lastOut = on; }
+  if (st.output !== on) {
+    addLog(on, cause);
+    lastOut = on;
+  }
   Shelly.call("Switch.Set", p, onSwitchSet);
 }
 
-function winInfo(w) { return w ? { t: w.title, k: w.k, s: w.s, e: w.e } : null; }
+function winInfo(w) {
+  return w ? { t: w.title, k: w.k, s: w.s, e: w.e } : null;
+}
 
 function tick() {
   if (!cfg) return;
   let t = getNow();
   let auto = cfg.a !== 0;
   let sw = Shelly.getComponentStatus("switch", CFG.switchId);
-  status = { now: t, test: testTime, synced: t > 0, auto: auto, relay: sw ? sw.output : null,
-    on: null, cur: null, next: null, nextOn: null, end: getWin(TBL_N - 1).e };
+  status = {
+    now: t,
+    test: testTime,
+    synced: t > 0,
+    auto: auto,
+    relay: sw ? sw.output : null,
+    on: null,
+    cur: null,
+    next: null,
+    nextOn: null,
+    end: getWin(TBL_N - 1).e
+  };
 
   if (!t) {
-    if (auto) { applyRelay(CFG.failState, 0, "f"); status.relay = CFG.failState; }
+    if (auto) {
+      applyRelay(CFG.failState, 0, "f");
+      status.relay = CFG.failState;
+    }
     return;
   }
 
   let idx = findWin(t);
   let w = getWin(idx);
-  let cur = (w && w.s <= t) ? w : null;
+  let cur = w && w.s <= t ? w : null;
   let nxt = cur ? getWin(idx + 1) : w;
   status.cur = winInfo(cur);
   status.next = winInfo(nxt);
 
   if ((cur ? cur.i : -1) !== lastWindowIdx) {
     lastWindowIdx = cur ? cur.i : -1;
-    console.log(cur ? "Entered window: " + cur.title : "No Shabbat/Yom Tov window", testTime ? "[TEST TIME]" : "");
+    console.log(
+      cur ? "Entered window: " + cur.title : "No Shabbat/Yom Tov window",
+      testTime ? "[TEST TIME]" : ""
+    );
   }
 
   // Relay: first interval containing t, else the next one
-  let on = null, upcoming = null;
+  let on = null,
+    upcoming = null;
   let pw = [cur, nxt, getWin(idx + (cur ? 2 : 1))];
   for (let k = 0; k < 3 && !upcoming && !on; k++) {
     if (!pw[k] || pw[k].s === cfg.s) continue; // skipped window
     let plan = windowPlan(pw[k], cfg.t);
     for (let i = 0; i < plan.length; i++) {
       let p = plan[i];
-      if (p.s <= t && t < p.e) { on = p; break; }
-      if (p.s > t) { upcoming = p; break; }
+      if (p.s <= t && t < p.e) {
+        on = p;
+        break;
+      }
+      if (p.s > t) {
+        upcoming = p;
+        break;
+      }
     }
   }
   if (on) status.on = [on.s, on.e, on.l];
@@ -342,31 +413,53 @@ function tick() {
 function snapshot() {
   let lg = "";
   for (let i = 0; i < logArr.length; i++) lg += (i ? "," : "") + logArr[i];
-  return { cfg: { timers: cfg.t, auto: cfg.a !== 0, skip: cfg.s }, st: status, log: lg, base: TBL_BASE };
+  return {
+    cfg: { timers: cfg.t, auto: cfg.a !== 0, skip: cfg.s },
+    st: status,
+    log: lg,
+    base: TBL_BASE
+  };
 }
 
 function doGet(req, params) {
   params = params || {};
-  if (!cfg) { req.error(-1, "starting"); return; }
+  if (!cfg) {
+    req.error(-1, "starting");
+    return;
+  }
   req.result(snapshot());
 }
 
 function doSet(req, params) {
   params = params || {};
-  if (!cfg) { req.error(-1, "starting"); return; }
+  if (!cfg) {
+    req.error(-1, "starting");
+    return;
+  }
   let changed = false;
   if (params.timers !== undefined) {
-    if (!validTimers(params.timers)) { req.error(-1, "invalid timers"); return; }
-    cfg.t = params.timers; changed = true;
+    if (!validTimers(params.timers)) {
+      req.error(-1, "invalid timers");
+      return;
+    }
+    cfg.t = params.timers;
+    changed = true;
   }
-  if (params.auto !== undefined) { cfg.a = params.auto ? 1 : 0; changed = true; }
+  if (params.auto !== undefined) {
+    cfg.a = params.auto ? 1 : 0;
+    changed = true;
+  }
   if (params.skip !== undefined) {
     // true -> skip the current/next window; false -> no skip
     let w = getWin(findWin(getNow() || TBL_BASE));
     cfg.s = params.skip && w ? w.s : 0;
     changed = true;
   }
-  if (params.resume) { manualHold = null; lastWanted = null; lastOut = null; }
+  if (params.resume) {
+    manualHold = null;
+    lastWanted = null;
+    lastOut = null;
+  }
   if (params.test !== undefined) {
     let tt = Math.floor(params.test || 0);
     testTime = tt > 0 ? tt : 0;
@@ -374,7 +467,10 @@ function doSet(req, params) {
   }
   if (changed) {
     let js = JSON.stringify(cfg);
-    if (js.length > 250) { req.error(-1, "too many timers"); return; }
+    if (js.length > 250) {
+      req.error(-1, "too many timers");
+      return;
+    }
     saveCfg();
   }
   replyQ.push(req);
@@ -383,10 +479,16 @@ function doSet(req, params) {
 
 function doPreview(req, params) {
   params = params || {};
-  if (!cfg) { req.error(-1, "starting"); return; }
+  if (!cfg) {
+    req.error(-1, "starting");
+    return;
+  }
   let tl = cfg.t;
   if (params.timers !== undefined) {
-    if (!validTimers(params.timers)) { req.error(-1, "invalid timers"); return; }
+    if (!validTimers(params.timers)) {
+      req.error(-1, "invalid timers");
+      return;
+    }
     tl = params.timers;
   }
   let n = Math.floor(params.n || 6);
@@ -418,36 +520,54 @@ let rq = [];
 function runQueue() {
   let x = rq[0];
   rq = rq.slice(1);
-  try { x[0](x[1], x[2]); } catch (e) { x[1].error(-1, "" + e); }
+  try {
+    x[0](x[1], x[2]);
+  } catch (e) {
+    x[1].error(-1, "" + e);
+  }
   if (rq.length) Timer.set(20, false, runQueue);
 }
 function enqueue(fn, req, params) {
-  if (rq.length >= 4) { req.error(-1, "busy"); return; }
+  if (rq.length >= 4) {
+    req.error(-1, "busy");
+    return;
+  }
   rq.push([fn, req, params || {}]);
   if (rq.length === 1) Timer.set(20, false, runQueue);
 }
-function onRpcGet(req, params) { enqueue(doGet, req, params); }
-function onRpcSet(req, params) { enqueue(doSet, req, params); }
-function onRpcPreview(req, params) { enqueue(doPreview, req, params); }
+function onRpcGet(req, params) {
+  enqueue(doGet, req, params);
+}
+function onRpcSet(req, params) {
+  enqueue(doSet, req, params);
+}
+function onRpcPreview(req, params) {
+  enqueue(doPreview, req, params);
+}
 
 // ---------------- UI loader page ----------------
 // The browser fetches the UI code from the stopped script named "shabbat_ui".
-let UI_A = '<!doctype html><html lang="he" dir="rtl"><head><meta charset="utf-8">' +
+let UI_A =
+  '<!doctype html><html lang="he" dir="rtl"><head><meta charset="utf-8">' +
   '<meta name="viewport" content="width=device-width,initial-scale=1"><title>שעון שבת</title></head>' +
   '<body style="font-family:system-ui,sans-serif"><div id="app">טוען…</div><script>window.SE_ID=';
-let UI_B = ';(async function(){try{' +
+let UI_B =
+  ";(async function(){try{" +
   'let l=await (await fetch("/rpc/Script.List")).json();' +
   'let u=l.scripts.find(function(s){return s.name==="shabbat_ui"});' +
   'if(!u)throw new Error("script shabbat_ui not found");' +
   'let c="",o=0,te=new TextEncoder();for(;;){let r=await (await fetch("/rpc/Script.GetCode?id="+u.id+"&offset="+o)).json();' +
-  'c+=r.data;o+=te.encode(r.data).length;if(!r.left||!r.data.length)break;}' +
+  "c+=r.data;o+=te.encode(r.data).length;if(!r.left||!r.data.length)break;}" +
   'new Function(c)();}catch(e){document.getElementById("app").textContent="UI load failed: "+e.message;}})();' +
-  '</script></body></html>';
+  "</script></body></html>";
 let UI_HTML = "";
 
 function onUi(req, res) {
   res.code = 200;
-  res.headers = [["Content-Type", "text/html; charset=utf-8"], ["Cache-Control", "no-store"]];
+  res.headers = [
+    ["Content-Type", "text/html; charset=utf-8"],
+    ["Cache-Control", "no-store"]
+  ];
   res.body = UI_HTML;
   res.send();
 }
@@ -456,7 +576,11 @@ function onUi(req, res) {
 function mem(stage) {
   if (!CFG.diag) return;
   let s = Shelly.getComponentStatus("script", Shelly.getCurrentScriptId());
-  console.log("[diag]", stage, s ? "mem_used=" + s.mem_used + " mem_peak=" + s.mem_peak + " mem_free=" + s.mem_free : "");
+  console.log(
+    "[diag]",
+    stage,
+    s ? "mem_used=" + s.mem_used + " mem_peak=" + s.mem_peak + " mem_free=" + s.mem_free : ""
+  );
 }
 
 let bootLoaded = null;
@@ -465,7 +589,10 @@ let BOOT = [
   function () {
     let c = bootLoaded;
     if (c && validTimers(c.t)) cfg = { t: c.t, a: c.a === 0 ? 0 : 1, s: c.s || 0 };
-    else { cfg = { t: DEFAULT_TIMERS, a: 1, s: 0 }; console.log("Using default timers"); }
+    else {
+      cfg = { t: DEFAULT_TIMERS, a: 1, s: 0 };
+      console.log("Using default timers");
+    }
   },
   function () {
     let id = Shelly.getCurrentScriptId();
@@ -478,12 +605,19 @@ let BOOT = [
   tick,
   function () {
     Timer.set(CFG.tickMs, true, tick);
-    console.log("Shabbat controller started. Windows:", TBL_N, "UI: /script/" + Shelly.getCurrentScriptId() + "/ui");
+    console.log(
+      "Shabbat controller started. Windows:",
+      TBL_N,
+      "UI: /script/" + Shelly.getCurrentScriptId() + "/ui"
+    );
   }
 ];
 
 function bootNext() {
-  if (bootStep >= BOOT.length) { mem("boot done"); return; }
+  if (bootStep >= BOOT.length) {
+    mem("boot done");
+    return;
+  }
   if (CFG.diag) console.log("[diag] boot step", bootStep);
   BOOT[bootStep]();
   bootStep++;
@@ -494,13 +628,18 @@ function bootNext() {
 function onKvsLoaded(res, err, msg) {
   mem("kvs loaded");
   if (!err && res && typeof res.value === "string") {
-    try { bootLoaded = JSON.parse(res.value); } catch (e) { console.log("Bad saved config, using defaults"); }
+    try {
+      bootLoaded = JSON.parse(res.value);
+    } catch (e) {
+      console.log("Bad saved config, using defaults");
+    }
   }
   Shelly.call("KVS.Get", { key: CFG.logKey }, onLogLoaded);
 }
 
 function onLogLoaded(res, err) {
-  if (!err && res && typeof res.value === "string" && res.value.length) logArr = res.value.split(",");
+  if (!err && res && typeof res.value === "string" && res.value.length)
+    logArr = res.value.split(",");
   Timer.set(50, false, bootNext);
 }
 
@@ -524,7 +663,10 @@ function onVcDeleted(res, err, msg) {
 }
 
 function cleanNext() {
-  if (toDelete.length) { Shelly.call("Virtual.Delete", { key: toDelete.pop() }, onVcDeleted); return; }
+  if (toDelete.length) {
+    Shelly.call("Virtual.Delete", { key: toDelete.pop() }, onVcDeleted);
+    return;
+  }
   Shelly.call("KVS.Get", { key: CFG.kvsKey }, onKvsLoaded);
 }
 

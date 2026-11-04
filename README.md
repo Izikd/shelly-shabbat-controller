@@ -42,7 +42,7 @@ memory it prints, then use **test time** on the settings page to step through a 
 4. Open `http://<shelly-ip>/script/<controller id>/ui` (the console prints the exact URL).
 
 ### Upgrading from a computer
-`tools/deploy.py` uploads `dist/` to the device over its RPC API (no dependencies;
+`tools/deploy.py` uploads `dist/` to the device over its RPC API (Python, no dependencies;
 `python3 tools/deploy.py ...` works too):
 ```
 uv run tools/deploy.py 192.168.1.50                    # LAN IP
@@ -81,14 +81,26 @@ The controller deletes any virtual components left on the device by older versio
 - `ShabbatPreview {timers?, n?}` -> `{w:[{t, k, s, e, skip, on:[[s, e, "1+3"]]}], now}`
 - Timer = `[anchor 0/1/2, value, duration, applies 0/1/2, days 0/1/2, enabled 0/1]`
 
+## Development
+The sources in `src/` are formatted with Prettier; `dist/` is generated - edit `src/`, then build.
+```
+npm install            # prettier + terser
+npm run format         # format src/, test/, tools/ (npm run format:check to verify)
+npm run build          # src/ -> dist/
+npm test               # simulator + browser test of the settings page (needs Playwright)
+```
+
 ## Layout
 - `src/main.js` controller, `src/ui.js` settings page, `src/table.js` generated table
 - `tools/gen_table.py` table generator (hdate; adds DST periods). Writes `src/table.js` and
   `test/windows.json` (the simulator's reference). To extend or move the table:
   `uv run tools/gen_table.py --years 2025 ... 2035` (`--lat/--lon` for another city), then
-  `uv run tools/build.py`. The tools declare their dependencies in a PEP 723 header, so uv
+  `npm run build`. The Python tools declare their dependencies in a PEP 723 header, so uv
   installs hdate on the fly; without uv, `pip install hdate` and run them with `python3`
-- `tools/build.py` -> `dist/shabbat_controller.js`, `dist/shabbat_controller_diag.js`, `dist/shabbat_ui.js`
+- `tools/build.mjs` (`npm run build`) -> `dist/shabbat_controller.js`, `dist/shabbat_controller_diag.js`,
+  `dist/shabbat_ui.js`. Minifies with terser: the page fully; the controller only by renaming
+  local variables and dropping whitespace (no code restructuring, which could break the engine
+  limits below). Top-level names are kept for `test/sim.js`
 - `tools/deploy.py` uploads `dist/` to a device (see "Upgrading from a computer")
 - `test/sim.js` device simulator (minute-by-minute relay sweep vs an independent reference)
 - `test/mockdevice.js` + `test/ui_test.js` fake Shelly + Playwright browser test of the page
