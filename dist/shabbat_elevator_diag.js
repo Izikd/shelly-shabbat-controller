@@ -238,7 +238,7 @@ status.cur=winInfo(cur);
 status.next=winInfo(nxt);
 if((cur?cur.i:-1)!==lastWindowIdx){
 lastWindowIdx=cur?cur.i:-1;
-console.log(cur?"Entered window: "+cur.title:"No Isur Melacha window",testTime?"[TEST TIME]":"");
+console.log(cur?"Entered window: "+cur.title:"No Shabbat/Yom Tov window",testTime?"[TEST TIME]":"");
 }
 let on=null,upcoming=null;
 let pw=[cur,nxt,getWin(idx+(cur?2:1))];

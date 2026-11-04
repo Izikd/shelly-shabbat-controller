@@ -1,7 +1,7 @@
 // =============================================================================
 // Shabbat Elevator controller for Shelly Pro 1 (Gen2 Pro / Gen3, firmware 2.0+)
 //
-// Turns switch:0 on during configured timers inside Isur Melacha windows
+// Turns switch:0 on during configured timers inside Shabbat & Yom Tov windows
 // (Shabbat + Yom Tov). Windows come from the embedded table (no internet).
 //
 // Settings UI:  http://<ip>/script/<this id>/ui
@@ -311,7 +311,7 @@ function tick() {
 
   if ((cur ? cur.i : -1) !== lastWindowIdx) {
     lastWindowIdx = cur ? cur.i : -1;
-    console.log(cur ? "Entered window: " + cur.title : "No Isur Melacha window", testTime ? "[TEST TIME]" : "");
+    console.log(cur ? "Entered window: " + cur.title : "No Shabbat/Yom Tov window", testTime ? "[TEST TIME]" : "");
   }
 
   // Relay: first interval containing t, else the next one

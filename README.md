@@ -1,7 +1,7 @@
 # Shabbat Elevator (Shelly Pro 1)
 
 Drives the Shabbat-elevator contactor from a Shelly Pro 1 (firmware 2.0+), using an
-embedded Isur Melacha table (Shabbat + Yom Tov, Israel, 2025-2030). No internet needed
+embedded table of Shabbat & Yom Tov windows (candle lighting to havdalah, Israel, 2025-2030). No internet needed
 once the clock is synced. Settings are edited on a web page served by the Shelly itself.
 
 ## Install (two scripts)
@@ -29,7 +29,7 @@ diagnostic build), `--no-ui`, `--restart`.
 The controller deletes any virtual components left on the device by older versions.
 
 ## Settings page
-- **Status**: Isur Melacha now, next window, next relay ON, automation on/off,
+- **Status**: Shabbat / Yom Tov now, next window, next relay ON, automation on/off,
   skip next window (one-off), test time (simulated clock, RAM only).
 - **Timers** (up to 12): start point candle lighting (+min) / fixed time / havdalah (-min),
   duration, applies to Shabbat & Yom Tov / Shabbat only / Yom Tov only, and for fixed-time
@@ -54,7 +54,10 @@ The controller deletes any virtual components left on the device by older versio
 
 ## Layout
 - `src/main.js` controller, `src/ui.js` settings page, `src/table.js` generated table
-- `tools/gen_table.py` table generator (hdate, or `--from-header` an ESPHome `.h`; adds DST periods)
+- `tools/gen_table.py` table generator (hdate; adds DST periods). Writes `src/table.js` and
+  `test/windows.json` (the simulator's reference). To extend or move the table:
+  `pip install -r tools/requirements.txt`, `python3 tools/gen_table.py --years 2025 ... 2035`
+  (`--lat/--lon` for another city), then `python3 tools/build.py`
 - `tools/build.py` -> `dist/shabbat_elevator.js`, `dist/shabbat_elevator_diag.js`, `dist/shabbat_ui.js`
 - `tools/deploy.py` uploads `dist/` to a device (see "Upgrading from a computer")
 - `test/sim.js` device simulator (minute-by-minute relay sweep vs an independent reference)

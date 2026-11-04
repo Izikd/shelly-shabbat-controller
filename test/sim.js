@@ -7,7 +7,8 @@ const vm = require("vm");
 
 const ROOT = path.join(__dirname, "..");
 const CODE = fs.readFileSync(path.join(ROOT, "dist", process.env.BUILD || "shabbat_elevator.js"), "utf8");
-const HDR = fs.readFileSync(path.join(ROOT, "tools/isur_melacha_ranges.h"), "utf8");
+// Reference windows written by tools/gen_table.py: [start, end, kind 1=Shabbat 2=Yom Tov 3=both]
+const WINDOWS = JSON.parse(fs.readFileSync(path.join(ROOT, "test/windows.json"), "utf8"));
 
 let fails = 0;
 function check(cond, msg) { if (!cond) { fails++; console.log("FAIL:", msg); } }
@@ -65,10 +66,8 @@ function makeDevice(opts) {
 }
 
 // ---------- Independent reference (Node Intl for TZ) ----------
-const ranges = [...new Set([...HDR.matchAll(/\{(\d+), (\d+), "([^"]*)"/g)].map((m) => m[1] + "," + m[2] + "," + m[3]))]
-  .map((s) => { const p = s.split(","); const title = p.slice(2).join(","); return [Number(p[0]), Number(p[1]), title]; }).sort((a, b) => a[0] - b[0]);
-// kind: Shabbat only = 1, holiday only = 2, both = 3 (from the original ESPHome titles)
-for (const r of ranges) { const t = r[2].split(", "); const sh = t.includes("Shaabat"); r[3] = sh && t.length === 1 ? 1 : (sh ? 3 : 2); }
+// ranges: [start, end, (unused), kind]
+const ranges = WINDOWS.map((w) => [w[0], w[1], "", w[2]]).sort((a, b) => a[0] - b[0]);
 
 const fmtParts = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jerusalem", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
 function localParts(t) { const o = {}; for (const p of fmtParts.formatToParts(new Date(t * 1000))) o[p.type] = p.value; return o; }

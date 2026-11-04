@@ -1,17 +1,19 @@
 #!/usr/bin/env python3
 """
-Generate the Isur Melacha (no-melacha) window table for the Shelly script.
+Generate the Shabbat & Yom Tov window table for the Shelly script
+(candle lighting -> havdalah, Israel, computed with hdate).
 
-Output is a small JS snippet (src/table.js) holding the windows as one compact
-encoded string - cheap in Shelly script memory.
+    pip install -r tools/requirements.txt
+    python3 tools/gen_table.py                                   # Petah Tikva, 2025-2030
+    python3 tools/gen_table.py --lat 31.778 --lon 35.235 --years 2026 2027 2028
 
-Two input modes:
+Writes:
+  src/table.js        the table for the script, one compact encoded string
+                      (cheap in Shelly script memory) + DST periods
+  test/windows.json   the same windows as plain [start, end, kind] for test/sim.js
+                      (kind 1 = Shabbat only, 2 = Yom Tov only, 3 = both)
 
-  1. Compute with hdate (needs: pip install hdate):
-       python3 gen_table.py --lat 32.0878 --lon 34.8860 --years 2025 2026 ... 2035
-
-  2. Convert an existing ESPHome header (isur_melacha_ranges.h):
-       python3 gen_table.py --from-header isur_melacha_ranges.h
+Run tools/build.py afterwards to rebuild dist/.
 
 Encoding (8 chars per window, custom base64 alphabet):
   4 chars  start, minutes since TBL_BASE (2025-01-01 00:00 UTC)
@@ -20,10 +22,12 @@ Encoding (8 chars per window, custom base64 alphabet):
 """
 
 import argparse
+import json
+import os
 import re
-import sys
 from datetime import date, datetime, timezone
 
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ALPHA = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+-"
 BASE = int(datetime(2025, 1, 1, tzinfo=timezone.utc).timestamp())
 
@@ -56,6 +60,13 @@ def clean_title(raw: str) -> str:
     return " + ".join(parts) or "Shabbat"
 
 
+def kind(raw: str) -> int:
+    """1 = Shabbat only, 2 = Yom Tov only, 3 = both."""
+    parts = [p.strip() for p in raw.split(",") if p.strip()]
+    shabbat = "Shabbat" in parts
+    return 1 if shabbat and len(parts) == 1 else (3 if shabbat else 2)
+
+
 def dst_periods(tzname, y0, y1):
     """[(start_utc, end_utc)] of DST periods for years y0..y1 from the tz database."""
     from datetime import timedelta
@@ -75,15 +86,17 @@ def dst_periods(tzname, y0, y1):
     return int(std.total_seconds()), out
 
 
-def from_header(path):
-    s = open(path, encoding="utf-8").read()
-    return [(int(a), int(b), t) for a, b, t in re.findall(r'\{(\d+), (\d+), "([^"]*)"\}', s)]
-
-
 def from_hdate(lat, lon, years):
+    import hdate.zmanim
     from hdate import HDateInfo, Location, Zmanim, translator
     from hdate.hebrew_date import Weekday
     from hdate.holidays import HolidayTypes
+
+    # hdate switches to a different sun model when the optional `astral` package is
+    # installed, moving times by 2-8 minutes. Always use hdate's own model, which the
+    # table has used since the start, so the output does not depend on what is installed.
+    if hasattr(hdate.zmanim, "_USE_ASTRAL"):
+        hdate.zmanim._USE_ASTRAL = False
 
     translator.set_language("en")
     loc = Location(name="site", latitude=lat, longitude=lon,
@@ -113,22 +126,17 @@ def from_hdate(lat, lon, years):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--from-header")
     ap.add_argument("--lat", type=float, default=32.0877639)   # Petah Tikva
     ap.add_argument("--lon", type=float, default=34.8859985)
-    ap.add_argument("--years", type=int, nargs="+")
-    ap.add_argument("--output", default="src/table.js")
+    ap.add_argument("--years", type=int, nargs="+", default=list(range(2025, 2031)))
+    ap.add_argument("--output", default=os.path.join(ROOT, "src", "table.js"))
+    ap.add_argument("--ref", default=os.path.join(ROOT, "test", "windows.json"),
+                    help="plain window list for test/sim.js")
     ap.add_argument("--tz", default="Asia/Jerusalem")
     a = ap.parse_args()
 
-    if a.from_header:
-        ranges = from_header(a.from_header)
-        src = f"converted from {a.from_header.split('/')[-1]}"
-    else:
-        if not a.years:
-            sys.exit("--years required in hdate mode")
-        ranges = from_hdate(a.lat, a.lon, a.years)
-        src = f"hdate lat={a.lat} lon={a.lon}"
+    ranges = from_hdate(a.lat, a.lon, a.years)
+    src = f"hdate lat={a.lat} lon={a.lon}"
 
     ranges = sorted(set(ranges))  # year-boundary scans can duplicate a window
     titles, data = [], ""
@@ -144,7 +152,7 @@ def main():
     first = datetime.fromtimestamp(ranges[0][0], timezone.utc).date()
     last = datetime.fromtimestamp(ranges[-1][1], timezone.utc).date()
     with open(a.output, "w", encoding="utf-8") as f:
-        f.write(f"// Isur Melacha table: {len(ranges)} windows, {first} .. {last} ({src})\n")
+        f.write(f"// Shabbat & Yom Tov table: {len(ranges)} windows, {first} .. {last} ({src})\n")
         f.write(f"let TBL_BASE = {BASE};\n")
         f.write("let TBL_T = [" + ",".join(f'"{t}"' for t in titles) + "];\n")
         f.write(f'let TBL = "{data}";\n')
@@ -152,6 +160,8 @@ def main():
         f.write(f"// DST periods ({a.tz}), UTC seconds [start, end, ...]\n")
         f.write(f"let TBL_STD = {std};\n")
         f.write("let TBL_DST = [" + ",".join(f"{s0},{e0}" for s0, e0 in dst) + "];\n")
+    with open(a.ref, "w", encoding="utf-8") as f:
+        f.write("[\n" + ",\n".join(json.dumps([s, e, kind(t)]) for s, e, t in ranges) + "\n]\n")
     print(f"{len(ranges)} windows, {len(titles)} titles, {len(data)} chars -> {a.output}")
 
 

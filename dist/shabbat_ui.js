@@ -103,7 +103,7 @@ st.manual?h("div",{cls:"warn col"},h("b",null,"הממסר הופעל/כובה י
 h("span",null,"האוטומציה לא תשנה את מצבו עד האירוע הבא בלוח הזמנים."),
 h("button",{cls:"btn",onclick:function(){rpc("ShabbatSet",{resume:true},load);}},"חזור לאוטומטי עכשיו")):null,
 h("div",{cls:"card col"},
-h("div",{cls:"kv"},h("span",{cls:"k"},"איסור מלאכה עכשיו"),h("span",{cls:"v big"},cur)),
+h("div",{cls:"kv"},h("span",{cls:"k"},"שבת / יום טוב עכשיו"),h("span",{cls:"v big"},cur)),
 h("hr"),
 h("div",{cls:"kv"},h("span",{cls:"k"},"החלון הבא"),h("span",{cls:"v"},nx?title(nx.t)+" · "+wdate(nx)+(cfg.skip===nx.s?" (מדולג)":""):"—"),
 nx?h("span",{cls:"s"},full(nx.s)+" ← "+full(nx.e)):null),
@@ -203,7 +203,7 @@ h("b",null,nm),h("span",{cls:"s"},sum)),
 sw(t.e,(t.e?"כבה ":"הפעל ")+nm,function(){upd(i,{e:!t.e});})),
 editor);
 });
-return[h("span",{cls:"s"},"כל טיימר פועל רק בתוך חלון איסור מלאכה (שבת ויום טוב)."),list,
+return[h("span",{cls:"s"},"כל טיימר פועל רק בתוך חלון של שבת או יום טוב."),list,
 S.timers.length<12?h("button",{cls:"addbtn",onclick:function(){
 S.timers.push({a:1,o:15,m:540,d:30,p:0,y:0,e:true});S.editing=S.timers.length-1;render();preview();}},"+ הוסף טיימר")
 :h("span",{cls:"s"},"הגעת למקסימום של 12 טיימרים.")];
