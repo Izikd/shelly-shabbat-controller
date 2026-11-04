@@ -20,7 +20,8 @@ const NOW = 1793731800; // Tue 03/11/2026 20:50 Israel
   const page = await browser.newPage({
     viewport: { width: 390, height: 844 },
     deviceScaleFactor: 2,
-    timezoneId: "Europe/London"
+    timezoneId: "Europe/London",
+    locale: "he-IL" // Hebrew browser -> Hebrew page on first visit
   });
   page.setDefaultTimeout(8000);
   const errors = [];
@@ -156,6 +157,60 @@ const NOW = 1793731800; // Tue 03/11/2026 20:50 Israel
   await page.screenshot({ path: path.join(out, "9-table-holidays.png") });
   await page.click("button[aria-label='הצג גם חלונות שעברו']");
   check((await page.locator(".tr").count()) > nHol, "past windows shown");
+
+  check(
+    (await page.getAttribute("html", "dir")) === "rtl" &&
+      (await page.getAttribute("html", "lang")) === "he",
+    "Hebrew page is rtl"
+  );
+
+  // English: an English browser gets English on first visit, the choice is remembered
+  const en = await browser.newPage({
+    viewport: { width: 390, height: 844 },
+    deviceScaleFactor: 2,
+    timezoneId: "Europe/London",
+    locale: "en-US"
+  });
+  en.setDefaultTimeout(8000);
+  en.on("pageerror", (e) => errors.push("en: " + e.message));
+  await en.goto(`http://localhost:${PORT}/script/1/ui`);
+  await en.waitForSelector("text=Next relay ON");
+  check(
+    (await en.getAttribute("html", "dir")) === "ltr" &&
+      (await en.getAttribute("html", "lang")) === "en" &&
+      (await en.title()) === "Shabbat Clock",
+    "English page is ltr with English title"
+  );
+  const enTxt = await en.textContent("main");
+  check(
+    /Fri 06\/11 16:30/.test(enTxt) && /Heshvan/.test(enTxt),
+    "English dates: " + enTxt.slice(0, 160)
+  );
+  check(/ → /.test(enTxt), "arrow points right in English");
+  await en.screenshot({ path: path.join(out, "en-1-status.png") });
+  await en.click("role=tab[name='Timers']");
+  await en.waitForSelector("text=After candle lighting");
+  await en.click("role=tab[name='Forecast']");
+  await en.waitForSelector(".slot");
+  await en.click("role=tab[name='Schedule']");
+  await en.waitForSelector(".tr");
+  await en.click("role=tab[name='Status']");
+  await en.click("text=Technical info");
+  await en.waitForSelector("text=Firmware");
+  // no Hebrew anywhere except the language button (the Hebrew-calendar date is in English)
+  const enAll = (await en.textContent("body")).replace("עברית", "");
+  check(
+    !/[\u0590-\u05FF]/.test(enAll),
+    "no Hebrew on the English page: " + (enAll.match(/.{0,20}[\u0590-\u05FF]+.{0,20}/) || [""])[0]
+  );
+  await en.screenshot({ path: path.join(out, "en-2-status-diag.png"), fullPage: true });
+  await en.click("button.lang");
+  await en.waitForSelector("text=הפעלה הבאה של הממסר");
+  await en.reload();
+  await en.waitForSelector("text=הפעלה הבאה של הממסר");
+  check((await en.getAttribute("html", "dir")) === "rtl", "switch to Hebrew is remembered");
+  await en.click("button.lang");
+  await en.waitForSelector("text=Next relay ON");
 
   check(errors.length === 0, "page errors: " + errors.join(" | "));
   console.log(fails ? fails + " UI FAILURE(S)" : "UI TESTS PASSED");

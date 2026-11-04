@@ -14,9 +14,9 @@ return(e<10?"0":"")+e}function fmtTime(e){let t=e+tzOffset(e);let A=Math.floor(t
 ;for(let l=0;l<t;l++)A=A*64+ALPHA.indexOf(TBL.charAt(e+l));return A}function getWin(e){if(e<0||e>=TBL_N)return null;let t=e*8;let A=TBL_BASE+dec(t,4)*60;let l=TBL_T[ALPHA.indexOf(TBL.charAt(t+7))]
 ;let n=2;if(l==="Shabbat")n=1;else if(l.indexOf("Shabbat")>=0)n=3;return{i:e,s:A,e:A+dec(t+4,3)*60,title:l,k:n}}function findWin(e){let t=0,A=TBL_N;while(t<A){let l=t+A>>1;let n=getWin(l)
 ;if(n.e<=e)t=l+1;else A=l}return t}function pushClipped(e,t,A,l,n){if(t<l.s)t=l.s;if(A>l.e)A=l.e;if(A<=t)return;let i=e.length;e.push(null);while(i>0&&e[i-1].s>t){e[i]=e[i-1];i--}e[i]={s:t,e:A,l:n}}
-function windowPlan(e,t){let A=[];let l=e.s+tzOffset(e.s);let n=e.e+tzOffset(e.e);let i=Math.floor(l/86400);let o=Math.floor(n/86400);let a=o-i;for(let l=0;l<t.length;l++){let n=t[l]
+function windowPlan(e,t){let A=[];let l=e.s+tzOffset(e.s);let n=e.e+tzOffset(e.e);let i=Math.floor(l/86400);let a=Math.floor(n/86400);let o=a-i;for(let l=0;l<t.length;l++){let n=t[l]
 ;if(!n[5]||n[2]<=0)continue;if(n[3]===1&&e.k===2)continue;if(n[3]===2&&e.k===1)continue;let X=""+(l+1);let r=e.s;if(n[0]===0){r=e.s+n[1]*60;pushClipped(A,r,r+n[2]*60,e,X);continue}if(n[0]===2){
-r=e.e+n[1]*60;pushClipped(A,r,r+n[2]*60,e,X);continue}for(let t=i-1;t<=o;t++){let l=t-i;if(n[4]===1&&l>1)continue;if(n[4]===2&&l!==a)continue;r=localToUtc(t*86400+n[1]*60)
+r=e.e+n[1]*60;pushClipped(A,r,r+n[2]*60,e,X);continue}for(let t=i-1;t<=a;t++){let l=t-i;if(n[4]===1&&l>1)continue;if(n[4]===2&&l!==o)continue;r=localToUtc(t*86400+n[1]*60)
 ;pushClipped(A,r,r+n[2]*60,e,X)}}let X=[];for(let e=0;e<A.length;e++){let t=A[e];let l=X.length?X[X.length-1]:null;if(l&&t.s<=l.e){if(t.e>l.e)l.e=t.e
 ;if(("+"+l.l+"+").indexOf("+"+t.l+"+")<0)l.l+="+"+t.l}else{X.push({s:t.s,e:t.e,l:t.l})}}return X}function validTimer(e){if(!e||e.length!==6)return false
 ;for(let t=0;t<6;t++)if(typeof e[t]!=="number"||e[t]!==Math.floor(e[t]))return false;if(e[0]<0||e[0]>2||e[2]<0||e[2]>240||e[3]<0||e[3]>2||e[4]<0||e[4]>2)return false
@@ -31,25 +31,25 @@ console.log("Switch.Set failed:",t,A);lastWanted=null}}function onLogSaved(e,t){
 ;let l=A&&A.unixtime?Math.floor((A.unixtime-TBL_BASE)/60):0;logArr.push(""+l+(e?"1":"0")+t);if(logArr.length>CFG.logMax)logArr=logArr.slice(logArr.length-CFG.logMax);saveLog()}
 function applyRelay(e,t,A){let l=Shelly.getComponentStatus("switch",CFG.switchId);if(!l)return;if(lastOut!==null&&l.output!==lastOut){let t=l.source==="timer";addLog(l.output,t?"t":"m")
 ;if(!t&&l.output!==e&&manualHold===null){manualHold=e;console.log("Manual switch detected - holding until the next timer event")}}lastOut=l.output;if(manualHold!==null){if(e===manualHold)return
-;manualHold=null}let n={id:CFG.switchId,on:e,tag:CFG.tag};let i=e&&t>0&&!testTime;if(i)n.toggle_after=t-getNow()+5;let o=l.output!==e||i&&t!==lastUntil
-;if(lastWanted!==e)console.log("Relay ->",e?"ON":"OFF");lastWanted=e;lastUntil=i?t:0;if(!o)return;if(l.output!==e){addLog(e,A);lastOut=e}Shelly.call("Switch.Set",n,onSwitchSet)}function winInfo(e){
+;manualHold=null}let n={id:CFG.switchId,on:e,tag:CFG.tag};let i=e&&t>0&&!testTime;if(i)n.toggle_after=t-getNow()+5;let a=l.output!==e||i&&t!==lastUntil
+;if(lastWanted!==e)console.log("Relay ->",e?"ON":"OFF");lastWanted=e;lastUntil=i?t:0;if(!a)return;if(l.output!==e){addLog(e,A);lastOut=e}Shelly.call("Switch.Set",n,onSwitchSet)}function winInfo(e){
 return e?{t:e.title,k:e.k,s:e.s,e:e.e}:null}function tick(){if(!cfg)return;let e=getNow();let t=cfg.a!==0;let A=Shelly.getComponentStatus("switch",CFG.switchId);status={now:e,test:testTime,synced:e>0,
 auto:t,relay:A?A.output:null,on:null,cur:null,next:null,nextOn:null,end:getWin(TBL_N-1).e};if(!e){if(t){applyRelay(CFG.failState,0,"f");status.relay=CFG.failState}return}let l=findWin(e)
-;let n=getWin(l);let i=n&&n.s<=e?n:null;let o=i?getWin(l+1):n;status.cur=winInfo(i);status.next=winInfo(o);if((i?i.i:-1)!==lastWindowIdx){lastWindowIdx=i?i.i:-1
-;console.log(i?"Entered window: "+i.title:"No Shabbat/Yom Tov window",testTime?"[TEST TIME]":"")}let a=null,X=null;let r=[i,o,getWin(l+(i?2:1))];for(let t=0;t<3&&!X&&!a;t++){
-if(!r[t]||r[t].s===cfg.s)continue;let A=windowPlan(r[t],cfg.t);for(let t=0;t<A.length;t++){let l=A[t];if(l.s<=e&&e<l.e){a=l;break}if(l.s>e){X=l;break}}}if(a)status.on=[a.s,a.e,a.l]
-;if(X)status.nextOn=[X.s,X.e,X.l];dbg("tick "+fmtTime(e),!!a);if(t){applyRelay(!!a,a?a.e:0,testTime?"x":"a");status.relay=manualHold!==null?lastOut:!!a}else lastWanted=null
+;let n=getWin(l);let i=n&&n.s<=e?n:null;let a=i?getWin(l+1):n;status.cur=winInfo(i);status.next=winInfo(a);if((i?i.i:-1)!==lastWindowIdx){lastWindowIdx=i?i.i:-1
+;console.log(i?"Entered window: "+i.title:"No Shabbat/Yom Tov window",testTime?"[TEST TIME]":"")}let o=null,X=null;let r=[i,a,getWin(l+(i?2:1))];for(let t=0;t<3&&!X&&!o;t++){
+if(!r[t]||r[t].s===cfg.s)continue;let A=windowPlan(r[t],cfg.t);for(let t=0;t<A.length;t++){let l=A[t];if(l.s<=e&&e<l.e){o=l;break}if(l.s>e){X=l;break}}}if(o)status.on=[o.s,o.e,o.l]
+;if(X)status.nextOn=[X.s,X.e,X.l];dbg("tick "+fmtTime(e),!!o);if(t){applyRelay(!!o,o?o.e:0,testTime?"x":"a");status.relay=manualHold!==null?lastOut:!!o}else lastWanted=null
 ;status.manual=manualHold!==null}function snapshot(){let e="";for(let t=0;t<logArr.length;t++)e+=(t?",":"")+logArr[t];return{cfg:{timers:cfg.t,auto:cfg.a!==0,skip:cfg.s},st:status,log:e,base:TBL_BASE}
 }function doGet(e,t){t=t||{};if(!cfg){e.error(-1,"starting");return}e.result(snapshot())}function doSet(e,t){t=t||{};if(!cfg){e.error(-1,"starting");return}let A=false;if(t.timers!==undefined){
 if(!validTimers(t.timers)){e.error(-1,"invalid timers");return}cfg.t=t.timers;A=true}if(t.auto!==undefined){cfg.a=t.auto?1:0;A=true}if(t.skip!==undefined){let e=getWin(findWin(getNow()||TBL_BASE))
 ;cfg.s=t.skip&&e?e.s:0;A=true}if(t.resume){manualHold=null;lastWanted=null;lastOut=null}if(t.test!==undefined){let e=Math.floor(t.test||0);testTime=e>0?e:0;lastWanted=null}if(A){
 let t=JSON.stringify(cfg);if(t.length>250){e.error(-1,"too many timers");return}saveCfg()}replyQ.push(e);kickTick()}function doPreview(e,t){t=t||{};if(!cfg){e.error(-1,"starting");return}let A=cfg.t
 ;if(t.timers!==undefined){if(!validTimers(t.timers)){e.error(-1,"invalid timers");return}A=t.timers}let l=Math.floor(t.n||6);if(l<1)l=1;if(l>8)l=8;let n=getNow()||TBL_BASE
-;let i=t.from?Math.floor(t.from):n;let o=findWin(i);let a=[];for(let e=0;e<l;e++){let t=getWin(o+e);if(!t)break;let l=t.s===cfg.s;let n=[];if(!l){let e=windowPlan(t,A)
-;for(let t=0;t<e.length;t++)n.push([e[t].s,e[t].e,e[t].l])}a.push({t:t.title,k:t.k,s:t.s,e:t.e,skip:l,on:n})}e.result({w:a,now:n})}let rq=[];function runQueue(){let e=rq[0];rq=rq.slice(1);try{
+;let i=t.from?Math.floor(t.from):n;let a=findWin(i);let o=[];for(let e=0;e<l;e++){let t=getWin(a+e);if(!t)break;let l=t.s===cfg.s;let n=[];if(!l){let e=windowPlan(t,A)
+;for(let t=0;t<e.length;t++)n.push([e[t].s,e[t].e,e[t].l])}o.push({t:t.title,k:t.k,s:t.s,e:t.e,skip:l,on:n})}e.result({w:o,now:n})}let rq=[];function runQueue(){let e=rq[0];rq=rq.slice(1);try{
 e[0](e[1],e[2])}catch(t){e[1].error(-1,""+t)}if(rq.length)Timer.set(20,false,runQueue)}function enqueue(e,t,A){if(rq.length>=4){t.error(-1,"busy");return}rq.push([e,t,A||{}])
 ;if(rq.length===1)Timer.set(20,false,runQueue)}function onRpcGet(e,t){enqueue(doGet,e,t)}function onRpcSet(e,t){enqueue(doSet,e,t)}function onRpcPreview(e,t){enqueue(doPreview,e,t)}
-let UI_A='<!doctype html><html lang="he" dir="rtl"><head><meta charset="utf-8">'+'<meta name="viewport" content="width=device-width,initial-scale=1"><title>שעון שבת</title></head>'+'<body style="font-family:system-ui,sans-serif"><div id="app">טוען…</div><script>window.SE_ID='
+let UI_A='<!doctype html><html><head><meta charset="utf-8">'+'<meta name="viewport" content="width=device-width,initial-scale=1"><title>Shabbat</title></head>'+'<body style="font-family:system-ui,sans-serif"><div id="app">…</div><script>window.SE_ID='
 
 ;let UI_B=";(async function(){try{"+'let l=await (await fetch("/rpc/Script.List")).json();'+'let u=l.scripts.find(function(s){return s.name==="shabbat_ui"});'+'if(!u)throw new Error("script shabbat_ui not found");'+'let c="",o=0,te=new TextEncoder();for(;;){let r=await (await fetch("/rpc/Script.GetCode?id="+u.id+"&offset="+o)).json();'+"c+=r.data;o+=te.encode(r.data).length;if(!r.left||!r.data.length)break;}"+'new Function(c)();}catch(e){document.getElementById("app").textContent="UI load failed: "+e.message;}})();'+"<\/script></body></html>"
 ;let UI_HTML="";function onUi(e,t){t.code=200;t.headers=[["Content-Type","text/html; charset=utf-8"],["Cache-Control","no-store"]];t.body=UI_HTML;t.send()}function mem(e){if(!CFG.diag)return

@@ -58,6 +58,10 @@ diagnostic build), `--no-ui`, `--restart`.
 The controller deletes any virtual components left on the device by older versions.
 
 ## Settings page
+Hebrew and English. A browser set to Hebrew gets Hebrew on the first visit, any other browser
+gets English; the button in the header switches language and the browser remembers the choice
+(it is not stored on the device). All page text is in the `I18N` table at the top of
+`src/ui.js` - add a language by adding an entry there.
 - **Status**: Shabbat / Yom Tov now, next window, next relay ON, automation on/off,
   skip next window (one-off), test time (simulated clock, RAM only).
 - **Timers** (up to 12): start point candle lighting (+min) / fixed time / havdalah (-min),

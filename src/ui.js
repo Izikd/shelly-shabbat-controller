@@ -21,6 +21,288 @@ if (typeof document !== "undefined")
       tblPast: false
     };
 
+    // ---------- languages ----------
+    // Every visible string lives here. tr(s, a, b, c) fills {0} {1} {2}.
+    var I18N = {
+      he: {
+        dir: "rtl",
+        appTitle: "שעון שבת",
+        langBtn: "English",
+        wd: { Sun: "א׳", Mon: "ב׳", Tue: "ג׳", Wed: "ד׳", Thu: "ה׳", Fri: "ו׳", Sat: "ש׳" },
+        hol: {
+          Shabbat: "שבת",
+          Pesach: "פסח",
+          "Pesach VII": "שביעי של פסח",
+          Shavuot: "שבועות",
+          "Rosh Hashana": "ראש השנה",
+          "Yom Kippur": "יום כיפור",
+          Sukkot: "סוכות",
+          "Simchat Torah": "שמחת תורה"
+        },
+        kind: { 1: "שבת", 2: "יום טוב", 3: "שבת + יו״ט" },
+        arrow: " ← ",
+        more: "◂ ",
+        less: "▾ ",
+        min: "{0} דק׳",
+        hours: "{0} שעות",
+        upDays: "{0} ימים ",
+        upHM: "{0} שע׳ {1} דק׳",
+        noConn: "אין חיבור למכשיר",
+        loading: "טוען…",
+        none: "אין",
+        dec5: "הפחת 5 דקות",
+        inc5: "הוסף 5 דקות",
+        curUntil: "{0} · עד {1}",
+        autoOff: "האוטומציה כבויה",
+        onNowUntil: "פועל עכשיו עד {0}",
+        noOnNext: "אין הפעלות בחלון הקרוב",
+        tableEnds: "טבלת הזמנים מסתיימת ב-{0} – יש לעדכן את הסקריפט",
+        notSynced: "השעון לא מסונכרן – הממסר כבוי ליתר ביטחון",
+        manualTitle: "הממסר הופעל/כובה ידנית",
+        manualBody: "האוטומציה לא תשנה את מצבו עד האירוע הבא בלוח הזמנים.",
+        resume: "חזור לאוטומטי עכשיו",
+        nowLabel: "שבת / יום טוב עכשיו",
+        nextWin: "החלון הבא",
+        skippedParen: " (מדולג)",
+        nextOn: "הפעלה הבאה של הממסר",
+        auto: "אוטומציה פעילה",
+        autoHint: "כבוי = הממסר בשליטה ידנית",
+        skip: "דלג על החלון הקרוב",
+        skipHint: "חד-פעמי, חוזר לפעול אחריו",
+        testTime: "זמן בדיקה",
+        testHint: "מדמה שעה אחרת (שעון ישראל) כדי לבדוק את הממסר. לא נשמר אחרי הפעלה מחדש.",
+        clear: "נקה",
+        testActive: "מצב בדיקה פעיל – הממסר פועל לפי {0}",
+        cause: {
+          a: "אוטומטי",
+          m: "ידני",
+          t: "כיבוי אוטומטי של המכשיר",
+          f: "ביטחון (שעון לא מסונכרן)",
+          x: "זמן בדיקה"
+        },
+        log: "יומן הממסר",
+        logHint: "15 ההפעלות והכיבויים האחרונים (נשמר במכשיר).",
+        logEmpty: "אין עדיין אירועים",
+        timeUnknown: "זמן לא ידוע",
+        turnedOn: "הופעל",
+        turnedOff: "כובה",
+        tech: "מידע טכני",
+        techErr: "מידע טכני: {0}",
+        dDevice: "מכשיר",
+        dFirmware: "קושחה",
+        dUptime: "זמן פעולה",
+        dLastSync: "סנכרון שעון אחרון",
+        dNeverSynced: "לא סונכרן",
+        dRamFree: "זיכרון פנוי במכשיר",
+        dScrMem: "זיכרון הסקריפט",
+        dMemFmt: "{0} בשימוש · שיא {1} · פנוי {2}",
+        dScrState: "מצב הסקריפט",
+        dRunning: "רץ",
+        dStopped: "עצור",
+        dErrors: "שגיאות",
+        dLastSrc: "מקור פקודה אחרונה לממסר",
+        dTemp: "טמפרטורה",
+        refresh: "רענן",
+        shabbatOnly: " · שבת בלבד",
+        ytOnly: " · יו״ט בלבד",
+        afterCandles: "אחרי הדלקת נרות",
+        badgeCandles: "נרות",
+        startsAfter: "מתחיל {0} אחרי · פועל {1}",
+        beforeHavdalah: "לפני הבדלה",
+        badgeHavdalah: "הבדלה",
+        startsBefore: "מתחיל {0} לפני · פועל {1}",
+        atTime: "בשעה {0}",
+        badgeTime: "שעה",
+        days: ["כל הימים", "יום ראשון", "יום אחרון"],
+        daysOnFor: "{0} · פועל {1}",
+        zeroDur: "משך 0 – לא פועל",
+        startPoint: "נקודת התחלה",
+        anchors: ["הדלקת נרות", "שעה קבועה", "הבדלה"],
+        timeLabel: "שעה",
+        minBefore: "כמה דקות לפני ההבדלה",
+        minAfter: "כמה דקות אחרי הדלקת הנרות",
+        duration: "משך",
+        appliesTo: "חל על",
+        applies: ["שבת ויו״ט", "שבת בלבד", "יו״ט בלבד"],
+        whichDays: "באילו ימים",
+        daysHint: "בחג של יומיים או שבת צמודה לחג – יום ראשון / אחרון / כל הימים.",
+        delTimer: "מחק טיימר",
+        done: "סיום",
+        disableT: "כבה {0}",
+        enableT: "הפעל {0}",
+        timersHint: "כל טיימר פועל רק בתוך חלון של שבת או יום טוב.",
+        addTimer: "+ הוסף טיימר",
+        maxTimers: "הגעת למקסימום של 12 טיימרים.",
+        tableErr: "לא ניתן לקרוא את הטבלה: {0}",
+        tableSummary: "{0} חלונות בטבלה, מ-{1} עד {2}. שעות לפי הדלקת נרות והבדלה.",
+        allWin: "שבתות וחגים",
+        holOnly: "חגים בלבד",
+        showPast: "הצג גם חלונות שעברו",
+        nowTag: " · עכשיו",
+        skipTag: " · מדולג",
+        noRows: "אין חלונות להצגה",
+        pvHint: "כך הממסר יפעל בחלונות הקרובים, לפי ההגדרות הנוכחיות (גם לפני שמירה).",
+        pvSkipped: "מדולג – הממסר לא יופעל בחלון זה",
+        pvNone: "אין הפעלות בחלון זה",
+        tabs: ["מצב", "טיימרים", "תחזית", "לוח זמנים"],
+        relayOn: "ממסר: פועל",
+        relayOff: "ממסר: כבוי",
+        testTag: " · בדיקה",
+        scriptN: "Shelly · סקריפט {0}",
+        error: "שגיאה: {0}",
+        unsaved: "יש שינויים שלא נשמרו",
+        discard: "בטל",
+        saved: "נשמר במכשיר ✓",
+        save: "שמור במכשיר"
+      },
+      en: {
+        dir: "ltr",
+        appTitle: "Shabbat Clock",
+        langBtn: "עברית",
+        wd: null, // English weekday names come from Intl
+        hol: { "Pesach VII": "Pesach (7th day)" }, // other table titles are already English
+        kind: { 1: "Shabbat", 2: "Yom Tov", 3: "Shabbat + Yom Tov" },
+        arrow: " → ",
+        more: "▸ ",
+        less: "▾ ",
+        min: "{0} min",
+        hours: "{0} h",
+        upDays: "{0} d ",
+        upHM: "{0} h {1} min",
+        noConn: "No connection to the device",
+        loading: "Loading…",
+        none: "None",
+        dec5: "5 minutes less",
+        inc5: "5 minutes more",
+        curUntil: "{0} · until {1}",
+        autoOff: "Automation is off",
+        onNowUntil: "On now until {0}",
+        noOnNext: "No relay time in the next window",
+        tableEnds: "The schedule table ends on {0} – update the script",
+        notSynced: "Clock not synced – relay kept off for safety",
+        manualTitle: "The relay was switched manually",
+        manualBody: "Automation will leave it as it is until the next timer event.",
+        resume: "Return to automatic now",
+        nowLabel: "Shabbat / Yom Tov now",
+        nextWin: "Next window",
+        skippedParen: " (skipped)",
+        nextOn: "Next relay ON",
+        auto: "Automation on",
+        autoHint: "Off = the relay is under manual control",
+        skip: "Skip the next window",
+        skipHint: "One time; resumes after it",
+        testTime: "Test time",
+        testHint: "Simulates another time (Israel time) to check the relay. Cleared on restart.",
+        clear: "Clear",
+        testActive: "Test mode – the relay follows {0}",
+        cause: {
+          a: "automatic",
+          m: "manual",
+          t: "device auto-off",
+          f: "fail-safe (clock not synced)",
+          x: "test time"
+        },
+        log: "Relay log",
+        logHint: "The last 15 on/off events (kept on the device).",
+        logEmpty: "No events yet",
+        timeUnknown: "unknown time",
+        turnedOn: "on",
+        turnedOff: "off",
+        tech: "Technical info",
+        techErr: "Technical info: {0}",
+        dDevice: "Device",
+        dFirmware: "Firmware",
+        dUptime: "Uptime",
+        dLastSync: "Last clock sync",
+        dNeverSynced: "never",
+        dRamFree: "Free device memory",
+        dScrMem: "Script memory",
+        dMemFmt: "{0} used · peak {1} · free {2}",
+        dScrState: "Script state",
+        dRunning: "running",
+        dStopped: "stopped",
+        dErrors: "Errors",
+        dLastSrc: "Last relay command source",
+        dTemp: "Temperature",
+        refresh: "Refresh",
+        shabbatOnly: " · Shabbat only",
+        ytOnly: " · Yom Tov only",
+        afterCandles: "After candle lighting",
+        badgeCandles: "Candles",
+        startsAfter: "Starts {0} after · on for {1}",
+        beforeHavdalah: "Before havdalah",
+        badgeHavdalah: "Havdalah",
+        startsBefore: "Starts {0} before · on for {1}",
+        atTime: "At {0}",
+        badgeTime: "Time",
+        days: ["Every day", "First day", "Last day"],
+        daysOnFor: "{0} · on for {1}",
+        zeroDur: "Duration 0 – never on",
+        startPoint: "Start point",
+        anchors: ["Candle lighting", "Fixed time", "Havdalah"],
+        timeLabel: "Time",
+        minBefore: "Minutes before havdalah",
+        minAfter: "Minutes after candle lighting",
+        duration: "Duration",
+        appliesTo: "Applies to",
+        applies: ["Shabbat & Yom Tov", "Shabbat only", "Yom Tov only"],
+        whichDays: "Which days",
+        daysHint: "For a two-day holiday or Shabbat next to a holiday – first / last / every day.",
+        delTimer: "Delete timer",
+        done: "Done",
+        disableT: "Disable {0}",
+        enableT: "Enable {0}",
+        timersHint: "Each timer works only inside a Shabbat or Yom Tov window.",
+        addTimer: "+ Add timer",
+        maxTimers: "Maximum of 12 timers reached.",
+        tableErr: "Cannot read the table: {0}",
+        tableSummary: "{0} windows in the table, from {1} to {2}. Candle lighting to havdalah.",
+        allWin: "Shabbat & holidays",
+        holOnly: "Holidays only",
+        showPast: "Show past windows",
+        nowTag: " · now",
+        skipTag: " · skipped",
+        noRows: "No windows to show",
+        pvHint:
+          "How the relay will run in the next windows with these settings (even before saving).",
+        pvSkipped: "Skipped – the relay will not turn on in this window",
+        pvNone: "No relay time in this window",
+        tabs: ["Status", "Timers", "Forecast", "Schedule"],
+        relayOn: "Relay: on",
+        relayOff: "Relay: off",
+        testTag: " · test",
+        scriptN: "Shelly · script {0}",
+        error: "Error: {0}",
+        unsaved: "Unsaved changes",
+        discard: "Discard",
+        saved: "Saved to device ✓",
+        save: "Save to device"
+      }
+    };
+    var LANG_KEY = "shabbat_lang"; // per browser; the device does not store it
+    var LANG, L;
+    function tr(s, a, b, c) {
+      return s.replace("{0}", a).replace("{1}", b).replace("{2}", c);
+    }
+    function setLang(lang, save) {
+      LANG = I18N[lang] ? lang : "en";
+      L = I18N[LANG];
+      document.documentElement.lang = LANG;
+      document.documentElement.dir = L.dir;
+      document.title = L.appTitle;
+      if (save) {
+        try {
+          localStorage.setItem(LANG_KEY, LANG);
+        } catch (e) {}
+      }
+    }
+    var savedLang = null;
+    try {
+      savedLang = localStorage.getItem(LANG_KEY);
+    } catch (e) {}
+    // first visit: Hebrew for a Hebrew browser, English otherwise
+    setLang(savedLang || (/^(he|iw)\b/i.test(navigator.language || "") ? "he" : "en"), false);
+
     // ---------- RPC ----------
     function rpc(method, params, cb) {
       params = params || {};
@@ -39,7 +321,7 @@ if (typeof document !== "undefined")
           cb(j);
         })
         .catch(function (e) {
-          S.err = "אין חיבור למכשיר";
+          S.err = L.noConn;
           render();
         });
     }
@@ -99,7 +381,6 @@ if (typeof document !== "undefined")
       minute: "2-digit",
       hourCycle: "h23"
     });
-    var WD = { Sun: "א׳", Mon: "ב׳", Tue: "ג׳", Wed: "ד׳", Thu: "ה׳", Fri: "ו׳", Sat: "ש׳" };
     function parts(t) {
       var o = {};
       DF.formatToParts(new Date(t * 1000)).forEach(function (p) {
@@ -113,7 +394,7 @@ if (typeof document !== "undefined")
     }
     function day(t) {
       var p = parts(t);
-      return WD[p.weekday] + " " + p.day + "/" + p.month;
+      return (L.wd ? L.wd[p.weekday] : p.weekday) + " " + p.day + "/" + p.month;
     }
     function full(t) {
       return day(t) + " " + hm(t);
@@ -141,21 +422,15 @@ if (typeof document !== "undefined")
       var p = parts(t);
       return p.year + "-" + p.month + "-" + p.day + "T" + p.hour + ":" + p.minute;
     }
-    var HE = {
-      Shabbat: "שבת",
-      Pesach: "פסח",
-      "Pesach VII": "שביעי של פסח",
-      Shavuot: "שבועות",
-      "Rosh Hashana": "ראש השנה",
-      "Yom Kippur": "יום כיפור",
-      Sukkot: "סוכות",
-      "Simchat Torah": "שמחת תורה"
-    };
-    // Hebrew date (browser's built-in Hebrew calendar), day in Hebrew numerals: "כ״ז בחשוון"
-    var HDF = new Intl.DateTimeFormat("he-u-ca-hebrew", {
-      timeZone: TZ,
-      day: "numeric",
-      month: "long"
+    // Hebrew-calendar date from the browser's built-in Hebrew calendar:
+    // Hebrew "כ״ז בחשוון" (day in Hebrew numerals), English "27 Heshvan"
+    var HDF = {};
+    ["he", "en"].forEach(function (l) {
+      HDF[l] = new Intl.DateTimeFormat(l + "-u-ca-hebrew", {
+        timeZone: TZ,
+        day: "numeric",
+        month: "long"
+      });
     });
     function gem(n) {
       if (n === 15) return "ט״ו";
@@ -167,10 +442,10 @@ if (typeof document !== "undefined")
     }
     function hdate(t) {
       var o = {};
-      HDF.formatToParts(new Date(t * 1000)).forEach(function (p) {
+      HDF[LANG].formatToParts(new Date(t * 1000)).forEach(function (p) {
         o[p.type] = p.value;
       });
-      return gem(+o.day) + " ב" + o.month;
+      return LANG === "he" ? gem(+o.day) + " ב" + o.month : o.day + " " + o.month;
     }
     function wdate(w) {
       return hdate(w.s + 43200);
@@ -179,13 +454,12 @@ if (typeof document !== "undefined")
       return t
         .split(" + ")
         .map(function (x) {
-          return HE[x] || x;
+          return L.hol[x] || x;
         })
         .join(" + ");
     }
-    var KIND = { 1: "שבת", 2: "יום טוב", 3: "שבת + יו״ט" };
     function mm(n) {
-      return n + " דק׳";
+      return tr(L.min, n);
     }
     function hhmm(m) {
       return ("0" + Math.floor(m / 60)).slice(-2) + ":" + ("0" + (m % 60)).slice(-2);
@@ -249,9 +523,9 @@ if (typeof document !== "undefined")
       return h(
         "div",
         { cls: "step" },
-        h("button", { "aria-label": "הפחת 5 דקות", onclick: dec }, "−"),
+        h("button", { "aria-label": L.dec5, onclick: dec }, "−"),
         h("span", null, text),
-        h("button", { "aria-label": "הוסף 5 דקות", onclick: inc }, "+")
+        h("button", { "aria-label": L.inc5, onclick: inc }, "+")
       );
     }
     function clamp(v, a, b) {
@@ -267,33 +541,29 @@ if (typeof document !== "undefined")
     function viewStatus() {
       var st = S.st,
         cfg = S.cfg;
-      if (!st) return h("div", { cls: "card" }, "טוען…");
-      var cur = st.cur ? title(st.cur.t) + " · עד " + full(st.cur.e) : "אין";
+      if (!st) return h("div", { cls: "card" }, L.loading);
+      var cur = st.cur ? tr(L.curUntil, title(st.cur.t), full(st.cur.e)) : L.none;
       var nx = st.next;
       var nextOn = !st.auto
-        ? "האוטומציה כבויה"
+        ? L.autoOff
         : st.on
-          ? "פועל עכשיו עד " + hm(st.on[1])
+          ? tr(L.onNowUntil, hm(st.on[1]))
           : st.nextOn
             ? full(st.nextOn[0]) + " · " + mm(Math.round((st.nextOn[1] - st.nextOn[0]) / 60))
-            : "אין הפעלות בחלון הקרוב";
+            : L.noOnNext;
       var warn =
         st.end - st.now < 180 * 86400
-          ? h(
-              "div",
-              { cls: "warn" },
-              "טבלת הזמנים מסתיימת ב-" + day(st.end) + " – יש לעדכן את הסקריפט"
-            )
+          ? h("div", { cls: "warn" }, tr(L.tableEnds, day(st.end)))
           : null;
       return [
-        !st.synced ? h("div", { cls: "warn" }, "השעון לא מסונכרן – הממסר כבוי ליתר ביטחון") : null,
+        !st.synced ? h("div", { cls: "warn" }, L.notSynced) : null,
         warn,
         st.manual
           ? h(
               "div",
               { cls: "warn col" },
-              h("b", null, "הממסר הופעל/כובה ידנית"),
-              h("span", null, "האוטומציה לא תשנה את מצבו עד האירוע הבא בלוח הזמנים."),
+              h("b", null, L.manualTitle),
+              h("span", null, L.manualBody),
               h(
                 "button",
                 {
@@ -302,7 +572,7 @@ if (typeof document !== "undefined")
                     rpc("ShabbatSet", { resume: true }, load);
                   }
                 },
-                "חזור לאוטומטי עכשיו"
+                L.resume
               )
             )
           : null,
@@ -312,26 +582,26 @@ if (typeof document !== "undefined")
           h(
             "div",
             { cls: "kv" },
-            h("span", { cls: "k" }, "שבת / יום טוב עכשיו"),
+            h("span", { cls: "k" }, L.nowLabel),
             h("span", { cls: "v big" }, cur)
           ),
           h("hr"),
           h(
             "div",
             { cls: "kv" },
-            h("span", { cls: "k" }, "החלון הבא"),
+            h("span", { cls: "k" }, L.nextWin),
             h(
               "span",
               { cls: "v" },
-              nx ? title(nx.t) + " · " + wdate(nx) + (cfg.skip === nx.s ? " (מדולג)" : "") : "—"
+              nx ? title(nx.t) + " · " + wdate(nx) + (cfg.skip === nx.s ? L.skippedParen : "") : "—"
             ),
-            nx ? h("span", { cls: "s" }, full(nx.s) + " ← " + full(nx.e)) : null
+            nx ? h("span", { cls: "s" }, full(nx.s) + L.arrow + full(nx.e)) : null
           ),
           h("hr"),
           h(
             "div",
             { cls: "kv" },
-            h("span", { cls: "k" }, "הפעלה הבאה של הממסר"),
+            h("span", { cls: "k" }, L.nextOn),
             h("span", { cls: "v" }, nextOn)
           )
         ),
@@ -341,13 +611,8 @@ if (typeof document !== "undefined")
           h(
             "div",
             { cls: "row" },
-            h(
-              "div",
-              { cls: "col0" },
-              h("b", null, "אוטומציה פעילה"),
-              h("span", { cls: "s" }, "כבוי = הממסר בשליטה ידנית")
-            ),
-            sw(st.auto, "אוטומציה פעילה", function () {
+            h("div", { cls: "col0" }, h("b", null, L.auto), h("span", { cls: "s" }, L.autoHint)),
+            sw(st.auto, L.auto, function () {
               rpc("ShabbatSet", { auto: !st.auto }, load);
             })
           ),
@@ -355,13 +620,8 @@ if (typeof document !== "undefined")
           h(
             "div",
             { cls: "row" },
-            h(
-              "div",
-              { cls: "col0" },
-              h("b", null, "דלג על החלון הקרוב"),
-              h("span", { cls: "s" }, "חד-פעמי, חוזר לפעול אחריו")
-            ),
-            sw(!!cfg.skip, "דלג על החלון הקרוב", function () {
+            h("div", { cls: "col0" }, h("b", null, L.skip), h("span", { cls: "s" }, L.skipHint)),
+            sw(!!cfg.skip, L.skip, function () {
               rpc("ShabbatSet", { skip: !cfg.skip }, function (j) {
                 load(j);
                 preview();
@@ -372,12 +632,8 @@ if (typeof document !== "undefined")
         h(
           "div",
           { cls: "card col" },
-          h("label", { for: "tt" }, h("b", null, "זמן בדיקה")),
-          h(
-            "span",
-            { cls: "s" },
-            "מדמה שעה אחרת (שעון ישראל) כדי לבדוק את הממסר. לא נשמר אחרי הפעלה מחדש."
-          ),
+          h("label", { for: "tt" }, h("b", null, L.testTime)),
+          h("span", { cls: "s" }, L.testHint),
           h(
             "div",
             { cls: "line" },
@@ -398,12 +654,10 @@ if (typeof document !== "undefined")
                   rpc("ShabbatSet", { test: 0 }, load);
                 }
               },
-              "נקה"
+              L.clear
             )
           ),
-          st.test
-            ? h("div", { cls: "warn" }, "מצב בדיקה פעיל – הממסר פועל לפי " + full(st.test))
-            : null
+          st.test ? h("div", { cls: "warn" }, tr(L.testActive, full(st.test))) : null
         ),
         viewLog(),
         viewDiag()
@@ -411,13 +665,6 @@ if (typeof document !== "undefined")
     }
 
     // ---------- relay event log (kept on the device) ----------
-    var CAUSE = {
-      a: "אוטומטי",
-      m: "ידני",
-      t: "כיבוי אוטומטי של המכשיר",
-      f: "ביטחון (שעון לא מסונכרן)",
-      x: "זמן בדיקה"
-    };
     function viewLog() {
       var ev = (S.log ? S.log.split(",") : [])
         .map(function (e) {
@@ -429,10 +676,10 @@ if (typeof document !== "undefined")
       return h(
         "div",
         { cls: "card col" },
-        h("b", null, "יומן הממסר"),
-        h("span", { cls: "s" }, "15 ההפעלות והכיבויים האחרונים (נשמר במכשיר)."),
+        h("b", null, L.log),
+        h("span", { cls: "s" }, L.logHint),
         !ev.length
-          ? h("span", { cls: "s" }, "אין עדיין אירועים")
+          ? h("span", { cls: "s" }, L.logEmpty)
           : ev.map(function (e) {
               return h(
                 "div",
@@ -441,9 +688,9 @@ if (typeof document !== "undefined")
                 h(
                   "span",
                   { cls: "grow" },
-                  (e.t ? day(e.t) : "זמן לא ידוע") + " · " + (e.on ? "הופעל" : "כובה")
+                  (e.t ? day(e.t) : L.timeUnknown) + " · " + (e.on ? L.turnedOn : L.turnedOff)
                 ),
-                h("span", { cls: "who" }, CAUSE[e.c] || e.c)
+                h("span", { cls: "who" }, L.cause[e.c] || e.c)
               );
             })
       );
@@ -466,34 +713,31 @@ if (typeof document !== "undefined")
               render();
             }
           },
-          h("b", null, (S.diagOpen ? "▾ " : "◂ ") + "מידע טכני")
+          h("b", null, (S.diagOpen ? L.less : L.more) + L.tech)
         )
       );
       if (!S.diagOpen) return box;
       if (!d) {
-        add(box, h("span", { cls: "s" }, "טוען…"));
+        add(box, h("span", { cls: "s" }, L.loading));
         return box;
       }
       function up(sec) {
         var dd = Math.floor(sec / 86400),
           hh = Math.floor((sec % 86400) / 3600),
           mi = Math.floor((sec % 3600) / 60);
-        return (dd ? dd + " ימים " : "") + hh + " שע׳ " + mi + " דק׳";
+        return (dd ? tr(L.upDays, dd) : "") + tr(L.upHM, hh, mi);
       }
       var rows = [
-        ["מכשיר", d.info.model + " · " + d.info.id],
-        ["קושחה", d.info.ver],
-        ["זמן פעולה", up(d.sys.uptime)],
-        ["סנכרון שעון אחרון", d.sys.last_sync_ts ? full(d.sys.last_sync_ts) : "לא סונכרן"],
-        ["זיכרון פנוי במכשיר", Math.round(d.sys.ram_free / 1024) + " KB"],
-        [
-          "זיכרון הסקריפט",
-          d.scr.mem_used + " בשימוש · שיא " + d.scr.mem_peak + " · פנוי " + d.scr.mem_free
-        ],
-        ["מצב הסקריפט", d.scr.running ? "רץ" : "עצור"],
-        ["שגיאות", d.scr.error_msg || (d.scr.errors && d.scr.errors.join(", ")) || "אין"],
-        ["מקור פקודה אחרונה לממסר", d.sw.source + (d.sw.tag ? " (" + d.sw.tag + ")" : "")],
-        ["טמפרטורה", d.sw.temperature ? d.sw.temperature.tC + "°C" : "—"]
+        [L.dDevice, d.info.model + " · " + d.info.id],
+        [L.dFirmware, d.info.ver],
+        [L.dUptime, up(d.sys.uptime)],
+        [L.dLastSync, d.sys.last_sync_ts ? full(d.sys.last_sync_ts) : L.dNeverSynced],
+        [L.dRamFree, Math.round(d.sys.ram_free / 1024) + " KB"],
+        [L.dScrMem, tr(L.dMemFmt, d.scr.mem_used, d.scr.mem_peak, d.scr.mem_free)],
+        [L.dScrState, d.scr.running ? L.dRunning : L.dStopped],
+        [L.dErrors, d.scr.error_msg || (d.scr.errors && d.scr.errors.join(", ")) || L.none],
+        [L.dLastSrc, d.sw.source + (d.sw.tag ? " (" + d.sw.tag + ")" : "")],
+        [L.dTemp, d.sw.temperature ? d.sw.temperature.tC + "°C" : "—"]
       ];
       add(
         box,
@@ -518,7 +762,7 @@ if (typeof document !== "undefined")
               render();
             }
           },
-          "רענן"
+          L.refresh
         )
       );
       return box;
@@ -540,7 +784,7 @@ if (typeof document !== "undefined")
           render();
         })
         .catch(function (e) {
-          S.err = "מידע טכני: " + e.message;
+          S.err = tr(L.techErr, e.message);
           render();
         });
     }
@@ -549,34 +793,34 @@ if (typeof document !== "undefined")
       var list = S.timers.map(function (t, i) {
         var ed = S.editing === i,
           isC = t.a === 1;
-        var ap = t.p === 1 ? " · שבת בלבד" : t.p === 2 ? " · יו״ט בלבד" : "";
+        var ap = t.p === 1 ? L.shabbatOnly : t.p === 2 ? L.ytOnly : "";
         var nm, badge, sum;
         if (t.a === 0) {
-          nm = "אחרי הדלקת נרות";
-          badge = "נרות";
-          sum = "מתחיל " + mm(t.o) + " אחרי · פועל " + mm(t.d) + ap;
+          nm = L.afterCandles;
+          badge = L.badgeCandles;
+          sum = tr(L.startsAfter, mm(t.o), mm(t.d)) + ap;
         } else if (t.a === 2) {
-          nm = "לפני הבדלה";
-          badge = "הבדלה";
-          sum = "מתחיל " + mm(-t.o) + " לפני · פועל " + mm(t.d) + ap;
+          nm = L.beforeHavdalah;
+          badge = L.badgeHavdalah;
+          sum = tr(L.startsBefore, mm(-t.o), mm(t.d)) + ap;
         } else {
-          nm = "בשעה " + hhmm(t.m);
-          badge = "שעה";
-          sum = ["כל הימים", "יום ראשון", "יום אחרון"][t.y] + " · פועל " + mm(t.d) + ap;
+          nm = tr(L.atTime, hhmm(t.m));
+          badge = L.badgeTime;
+          sum = tr(L.daysOnFor, L.days[t.y], mm(t.d)) + ap;
         }
-        if (t.d <= 0) sum = "משך 0 – לא פועל";
+        if (t.d <= 0) sum = L.zeroDur;
         var lim = t.a === 2 ? [-180, 0] : [0, 180];
         var editor = !ed
           ? null
           : h(
               "div",
               { cls: "ed" },
-              h("span", { cls: "lab" }, "נקודת התחלה"),
+              h("span", { cls: "lab" }, L.startPoint),
               pills(
                 [
-                  [0, "הדלקת נרות"],
-                  [1, "שעה קבועה"],
-                  [2, "הבדלה"]
+                  [0, L.anchors[0]],
+                  [1, L.anchors[1]],
+                  [2, L.anchors[2]]
                 ],
                 t.a,
                 function (v) {
@@ -585,7 +829,7 @@ if (typeof document !== "undefined")
               ),
               isC
                 ? [
-                    h("label", { cls: "lab", for: "tm" + i }, "שעה"),
+                    h("label", { cls: "lab", for: "tm" + i }, L.timeLabel),
                     h("input", {
                       id: "tm" + i,
                       type: "time",
@@ -597,11 +841,7 @@ if (typeof document !== "undefined")
                     })
                   ]
                 : [
-                    h(
-                      "span",
-                      { cls: "lab" },
-                      t.a === 2 ? "כמה דקות לפני ההבדלה" : "כמה דקות אחרי הדלקת הנרות"
-                    ),
+                    h("span", { cls: "lab" }, t.a === 2 ? L.minBefore : L.minAfter),
                     stepper(
                       mm(Math.abs(t.o)),
                       function () {
@@ -612,7 +852,7 @@ if (typeof document !== "undefined")
                       }
                     )
                   ],
-              h("span", { cls: "lab" }, "משך"),
+              h("span", { cls: "lab" }, L.duration),
               stepper(
                 mm(t.d),
                 function () {
@@ -622,12 +862,12 @@ if (typeof document !== "undefined")
                   upd(i, { d: clamp(t.d + 5, 0, 240) });
                 }
               ),
-              h("span", { cls: "lab" }, "חל על"),
+              h("span", { cls: "lab" }, L.appliesTo),
               pills(
                 [
-                  [0, "שבת ויו״ט"],
-                  [1, "שבת בלבד"],
-                  [2, "יו״ט בלבד"]
+                  [0, L.applies[0]],
+                  [1, L.applies[1]],
+                  [2, L.applies[2]]
                 ],
                 t.p,
                 function (v) {
@@ -636,23 +876,19 @@ if (typeof document !== "undefined")
               ),
               isC
                 ? [
-                    h("span", { cls: "lab" }, "באילו ימים"),
+                    h("span", { cls: "lab" }, L.whichDays),
                     pills(
                       [
-                        [0, "כל הימים"],
-                        [1, "יום ראשון"],
-                        [2, "יום אחרון"]
+                        [0, L.days[0]],
+                        [1, L.days[1]],
+                        [2, L.days[2]]
                       ],
                       t.y,
                       function (v) {
                         upd(i, { y: v });
                       }
                     ),
-                    h(
-                      "span",
-                      { cls: "s" },
-                      "בחג של יומיים או שבת צמודה לחג – יום ראשון / אחרון / כל הימים."
-                    )
+                    h("span", { cls: "s" }, L.daysHint)
                   ]
                 : null,
               h(
@@ -669,7 +905,7 @@ if (typeof document !== "undefined")
                       preview();
                     }
                   },
-                  "מחק טיימר"
+                  L.delTimer
                 ),
                 h(
                   "button",
@@ -680,7 +916,7 @@ if (typeof document !== "undefined")
                       render();
                     }
                   },
-                  "סיום"
+                  L.done
                 )
               )
             );
@@ -704,7 +940,7 @@ if (typeof document !== "undefined")
               h("b", null, nm),
               h("span", { cls: "s" }, sum)
             ),
-            sw(t.e, (t.e ? "כבה " : "הפעל ") + nm, function () {
+            sw(t.e, tr(t.e ? L.disableT : L.enableT, nm), function () {
               upd(i, { e: !t.e });
             })
           ),
@@ -712,7 +948,7 @@ if (typeof document !== "undefined")
         );
       });
       return [
-        h("span", { cls: "s" }, "כל טיימר פועל רק בתוך חלון של שבת או יום טוב."),
+        h("span", { cls: "s" }, L.timersHint),
         list,
         S.timers.length < 12
           ? h(
@@ -726,9 +962,9 @@ if (typeof document !== "undefined")
                   preview();
                 }
               },
-              "+ הוסף טיימר"
+              L.addTimer
             )
-          : h("span", { cls: "s" }, "הגעת למקסימום של 12 טיימרים.")
+          : h("span", { cls: "s" }, L.maxTimers)
       ];
     }
 
@@ -791,13 +1027,13 @@ if (typeof document !== "undefined")
     }
     function dur(sec) {
       var h = Math.round(sec / 3600);
-      return h + " שעות";
+      return tr(L.hours, h);
     }
     function viewTable() {
-      if (S.tblErr) return h("div", { cls: "warn" }, "לא ניתן לקרוא את הטבלה: " + S.tblErr);
+      if (S.tblErr) return h("div", { cls: "warn" }, tr(L.tableErr, S.tblErr));
       if (!S.tbl) {
         loadTable();
-        return h("div", { cls: "card" }, "טוען…");
+        return h("div", { cls: "card" }, L.loading);
       }
       var now = (S.st && S.st.now) || Date.now() / 1000;
       var rows = S.tbl.filter(function (w) {
@@ -809,16 +1045,12 @@ if (typeof document !== "undefined")
         h(
           "span",
           { cls: "s" },
-          S.tbl.length +
-            " חלונות בטבלה, מ-" +
-            day(first.s) +
-            "/" +
-            parts(first.s).year +
-            " עד " +
-            day(last.e) +
-            "/" +
-            parts(last.e).year +
-            ". שעות לפי הדלקת נרות והבדלה."
+          tr(
+            L.tableSummary,
+            S.tbl.length,
+            day(first.s) + "/" + parts(first.s).year,
+            day(last.e) + "/" + parts(last.e).year
+          )
         ),
         h(
           "div",
@@ -833,7 +1065,7 @@ if (typeof document !== "undefined")
                 render();
               }
             },
-            "שבתות וחגים"
+            L.allWin
           ),
           h(
             "button",
@@ -845,14 +1077,14 @@ if (typeof document !== "undefined")
                 render();
               }
             },
-            "חגים בלבד"
+            L.holOnly
           )
         ),
         h(
           "div",
           { cls: "row" },
-          h("div", { cls: "col0" }, h("b", null, "הצג גם חלונות שעברו")),
-          sw(S.tblPast, "הצג גם חלונות שעברו", function () {
+          h("div", { cls: "col0" }, h("b", null, L.showPast)),
+          sw(S.tblPast, L.showPast, function () {
             S.tblPast = !S.tblPast;
             render();
           })
@@ -880,26 +1112,22 @@ if (typeof document !== "undefined")
               h(
                 "b",
                 null,
-                title(w.t) + " · " + wdate(w) + (cur ? " · עכשיו" : "") + (skip ? " · מדולג" : "")
+                title(w.t) + " · " + wdate(w) + (cur ? L.nowTag : "") + (skip ? L.skipTag : "")
               ),
-              h("span", { cls: "s" }, full(w.s) + " ← " + full(w.e))
+              h("span", { cls: "s" }, full(w.s) + L.arrow + full(w.e))
             ),
             h("span", { cls: "s nowrap" }, dur(w.e - w.s))
           )
         );
       });
-      if (!rows.length) out.push(h("span", { cls: "s" }, "אין חלונות להצגה"));
+      if (!rows.length) out.push(h("span", { cls: "s" }, L.noRows));
       return out;
     }
 
     function viewPreview() {
-      if (!S.prev) return h("div", { cls: "card" }, "טוען…");
+      if (!S.prev) return h("div", { cls: "card" }, L.loading);
       return [
-        h(
-          "span",
-          { cls: "s" },
-          "כך הממסר יפעל בחלונות הקרובים, לפי ההגדרות הנוכחיות (גם לפני שמירה)."
-        ),
+        h("span", { cls: "s" }, L.pvHint),
         S.prev.map(function (w) {
           return h(
             "div",
@@ -908,15 +1136,21 @@ if (typeof document !== "undefined")
               "div",
               { cls: "line sb" },
               h("b", null, title(w.t) + " · " + wdate(w)),
-              h("span", { cls: "s" }, KIND[w.k])
+              h("span", { cls: "s" }, L.kind[w.k])
             ),
-            h("span", { cls: "s" }, full(w.s) + " ← " + full(w.e)),
-            w.skip ? h("div", { cls: "warn" }, "מדולג – הממסר לא יופעל בחלון זה") : null,
-            !w.skip && !w.on.length ? h("span", { cls: "s" }, "אין הפעלות בחלון זה") : null,
+            h("span", { cls: "s" }, full(w.s) + L.arrow + full(w.e)),
+            w.skip ? h("div", { cls: "warn" }, L.pvSkipped) : null,
+            !w.skip && !w.on.length ? h("span", { cls: "s" }, L.pvNone) : null,
             w.on.map(function (o) {
               var names = o[2].split("+").map(function (n) {
                 var t = S.timers[+n - 1];
-                return !t ? "#" + n : t.a === 0 ? "נרות" : t.a === 2 ? "הבדלה" : hhmm(t.m);
+                return !t
+                  ? "#" + n
+                  : t.a === 0
+                    ? L.badgeCandles
+                    : t.a === 2
+                      ? L.badgeHavdalah
+                      : hhmm(t.m);
               });
               return h(
                 "div",
@@ -936,14 +1170,12 @@ if (typeof document !== "undefined")
     function render() {
       var st = S.st;
       var tabs = [
-        ["status", "מצב"],
-        ["timers", "טיימרים"],
-        ["preview", "תחזית"],
-        ["table", "לוח זמנים"]
+        ["status", L.tabs[0]],
+        ["timers", L.tabs[1]],
+        ["preview", L.tabs[2]],
+        ["table", L.tabs[3]]
       ];
-      var relay = !st
-        ? "…"
-        : (st.relay ? "ממסר: פועל" : "ממסר: כבוי") + (st.test ? " · בדיקה" : "");
+      var relay = !st ? "…" : (st.relay ? L.relayOn : L.relayOff) + (st.test ? L.testTag : "");
       var body =
         S.tab === "status"
           ? viewStatus()
@@ -965,10 +1197,26 @@ if (typeof document !== "undefined")
             h(
               "div",
               { cls: "col0" },
-              h("h1", null, "שעון שבת"),
-              h("span", { cls: "s" }, "Shelly · סקריפט " + ID)
+              h("h1", null, L.appTitle),
+              h("span", { cls: "s" }, tr(L.scriptN, ID))
             ),
-            h("span", { cls: "relay" + (st && st.relay ? " on" : "") }, relay)
+            h(
+              "div",
+              { cls: "line" },
+              h(
+                "button",
+                {
+                  cls: "lang",
+                  lang: LANG === "he" ? "en" : "he",
+                  onclick: function () {
+                    setLang(LANG === "he" ? "en" : "he", true);
+                    render();
+                  }
+                },
+                L.langBtn
+              ),
+              h("span", { cls: "relay" + (st && st.relay ? " on" : "") }, relay)
+            )
           ),
           h(
             "div",
@@ -991,13 +1239,13 @@ if (typeof document !== "undefined")
             })
           )
         ),
-        S.err ? h("div", { cls: "warn m" }, "שגיאה: " + S.err) : null,
+        S.err ? h("div", { cls: "warn m" }, tr(L.error, S.err)) : null,
         h("main", null, body),
         d
           ? h(
               "div",
               { cls: "bar" },
-              h("span", null, "יש שינויים שלא נשמרו"),
+              h("span", null, L.unsaved),
               h(
                 "div",
                 { cls: "line" },
@@ -1012,7 +1260,7 @@ if (typeof document !== "undefined")
                       preview();
                     }
                   },
-                  "בטל"
+                  L.discard
                 ),
                 h(
                   "button",
@@ -1022,7 +1270,7 @@ if (typeof document !== "undefined")
                       rpc("ShabbatSet", { timers: draft() }, function (j) {
                         S.saved = JSON.stringify(j.cfg.timers);
                         S.editing = -1;
-                        S.flash = "נשמר במכשיר ✓";
+                        S.flash = L.saved;
                         load(j);
                         preview();
                         setTimeout(function () {
@@ -1032,7 +1280,7 @@ if (typeof document !== "undefined")
                       });
                     }
                   },
-                  "שמור במכשיר"
+                  L.save
                 )
               )
             )
@@ -1058,6 +1306,7 @@ if (typeof document !== "undefined")
       .col0 { display: flex; flex-direction: column; gap: 2px; min-width: 0 }
       .relay { font-size: 13px; font-weight: 500; border-radius: 999px; padding: 6px 12px; background: #EEF1F5; color: #374151; white-space: nowrap }
       .relay.on { background: #0F5132; color: #fff }
+      .lang { font: inherit; font-size: 13px; height: 32px; padding: 0 10px; border: 1px solid #C9D0DA; border-radius: 999px; background: #fff; color: #1D4ED8; cursor: pointer; white-space: nowrap }
       .tabs { display: grid; grid-template-columns: repeat(4,1fr); gap: 4px; background: #EEF1F5; border-radius: 10px; padding: 4px }
       .tabs button { height: 38px; border: 0; border-radius: 8px; background: transparent; font: inherit; font-size: 13px; font-weight: 500; color: #374151; cursor: pointer; padding: 0 2px }
       .tabs .sel { background: #fff; color: #16202A; font-weight: 700; box-shadow: 0 1px 2px rgba(22,32,42,.15) }
@@ -1071,8 +1320,9 @@ if (typeof document !== "undefined")
       hr { border: 0; border-top: 1px solid #E2E6EC; margin: 4px 0; width: 100% }
       .row { display: flex; align-items: center; gap: 12px; min-height: 56px }
       .row .col0 { flex: 1 }
-      .sw { width: 52px; height: 32px; flex-shrink: 0; border-radius: 16px; border: 0; padding: 3px; cursor: pointer; display: flex; justify-content: flex-end; align-items: center; background: #AEB7C4 }
-      .sw.on { justify-content: flex-start; background: #1D4ED8 }
+      /* physical direction: knob on the right = on, in both languages */
+      .sw { width: 52px; height: 32px; flex-shrink: 0; border-radius: 16px; border: 0; padding: 3px; cursor: pointer; display: flex; direction: ltr; justify-content: flex-start; align-items: center; background: #AEB7C4 }
+      .sw.on { justify-content: flex-end; background: #1D4ED8 }
       .sw span { width: 26px; height: 26px; border-radius: 13px; background: #fff; display: block }
       input { font: inherit; font-size: 16px; height: 44px; box-sizing: border-box; border: 1px solid #C9D0DA; border-radius: 10px; padding: 0 10px; background: #fff; color: #16202A }
       #tt { flex: 1; min-width: 0 }
@@ -1090,7 +1340,7 @@ if (typeof document !== "undefined")
       .b0 { background: #FFF4E5; color: #8A4B00 }
       .b1 { background: #E6F0FF; color: #1E3A8A }
       .b2 { background: #EFEAFE; color: #4C2A9E }
-      .tname { flex: 1; min-width: 0; text-align: right; background: none; border: 0; padding: 4px 0; cursor: pointer; display: flex; flex-direction: column; gap: 2px; font: inherit; color: #16202A }
+      .tname { flex: 1; min-width: 0; text-align: start; background: none; border: 0; padding: 4px 0; cursor: pointer; display: flex; flex-direction: column; gap: 2px; font: inherit; color: #16202A }
       .ed { border-top: 1px solid #E2E6EC; padding: 14px; display: flex; flex-direction: column; gap: 8px; background: #FAFBFC; border-radius: 0 0 14px 14px }
       .lab { font-size: 13px; font-weight: 500; color: #374151; margin-top: 4px }
       .pills { display: grid; grid-template-columns: repeat(3,1fr); gap: 6px }
@@ -1119,12 +1369,11 @@ if (typeof document !== "undefined")
       .slot.offev { background: #F3F4F6 }
       .slot.offev .tm { color: #374151 }
       .drow { padding: 4px 0; border-top: 1px solid #EEF1F5 }
-      .dv { font-size: 13px; text-align: left; direction: ltr; unicode-bidi: isolate; word-break: break-all }
+      .dv { font-size: 13px; text-align: end; direction: ltr; unicode-bidi: isolate; word-break: break-all }
       .warn.col { display: flex; flex-direction: column; gap: 6px }
       button:focus-visible, input:focus-visible { outline: 2px solid #1D4ED8; outline-offset: 2px }
     `;
     document.head.appendChild(h("style", null, css));
-    document.title = "שעון שבת";
     render();
     refresh();
     preview();

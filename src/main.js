@@ -548,9 +548,10 @@ function onRpcPreview(req, params) {
 // ---------------- UI loader page ----------------
 // The browser fetches the UI code from the stopped script named "shabbat_ui".
 let UI_A =
-  '<!doctype html><html lang="he" dir="rtl"><head><meta charset="utf-8">' +
-  '<meta name="viewport" content="width=device-width,initial-scale=1"><title>שעון שבת</title></head>' +
-  '<body style="font-family:system-ui,sans-serif"><div id="app">טוען…</div><script>window.SE_ID=';
+  // language-neutral: the page code sets lang, dir and title (Hebrew or English)
+  '<!doctype html><html><head><meta charset="utf-8">' +
+  '<meta name="viewport" content="width=device-width,initial-scale=1"><title>Shabbat</title></head>' +
+  '<body style="font-family:system-ui,sans-serif"><div id="app">…</div><script>window.SE_ID=';
 let UI_B =
   ";(async function(){try{" +
   'let l=await (await fetch("/rpc/Script.List")).json();' +
