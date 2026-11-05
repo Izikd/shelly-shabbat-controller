@@ -3,6 +3,7 @@
 // Plain ES5 + guard, so starting it on the Shelly by mistake does nothing.
 if (typeof document !== "undefined")
   (function () {
+    var UI_VERSION = "@@VERSION@@"; // set by tools/build.mjs
     var ID = window.SE_ID,
       TZ = "Asia/Jerusalem";
     var S = {
@@ -88,6 +89,8 @@ if (typeof document !== "undefined")
         turnedOff: "כובה",
         tech: "מידע טכני",
         techErr: "מידע טכני: {0}",
+        dVersion: "גרסה",
+        dVerBoth: "בקר {0} · דף {1}",
         dDevice: "מכשיר",
         dFirmware: "קושחה",
         dUptime: "זמן פעולה",
@@ -212,6 +215,8 @@ if (typeof document !== "undefined")
         turnedOff: "off",
         tech: "Technical info",
         techErr: "Technical info: {0}",
+        dVersion: "Version",
+        dVerBoth: "controller {0} · page {1}",
         dDevice: "Device",
         dFirmware: "Firmware",
         dUptime: "Uptime",
@@ -747,6 +752,10 @@ if (typeof document !== "undefined")
       // the controller running (shabbat_ui never runs) used + free is the whole pool
       var pool = d.scr.mem_used + d.scr.mem_free;
       var rows = [
+        [
+          L.dVersion,
+          d.ver === UI_VERSION || !d.ver ? UI_VERSION : tr(L.dVerBoth, d.ver, UI_VERSION)
+        ],
         [L.dDevice, d.info.model + " · " + d.info.id],
         [L.dFirmware, d.info.ver],
         [L.dUptime, up(d.sys.uptime)],
@@ -807,10 +816,13 @@ if (typeof document !== "undefined")
         g("/rpc/Shelly.GetDeviceInfo"),
         g("/rpc/Sys.GetStatus"),
         g("/rpc/Script.GetStatus?id=" + ID),
-        g("/rpc/Switch.GetStatus?id=0")
+        g("/rpc/Switch.GetStatus?id=0"),
+        // the controller's version is in the first line of its code (no script memory used)
+        g("/rpc/Script.GetCode?id=" + ID + "&offset=0&len=120")
       ])
         .then(function (r) {
-          S.diag = { info: r[0], sys: r[1], scr: r[2], sw: r[3] };
+          var v = (r[4].data || "").match(/version (\S+)/);
+          S.diag = { info: r[0], sys: r[1], scr: r[2], sw: r[3], ver: v ? v[1] : "" };
           render();
         })
         .catch(function (e) {

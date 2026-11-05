@@ -32,23 +32,29 @@ the device's firmware page. Before relying on a new model, run `tools/deploy.py`
 memory it prints, then use **test time** on the settings page to step through a window.
 
 ## Install (two scripts)
+Download `shabbat_controller.js` and `shabbat_ui.js` from the latest
+[release](https://github.com/Izikd/shelly-shabbat-controller/releases), then:
 1. **Controller** - Scripts -> Create script, any name (e.g. `shabbat_controller`),
-   paste `dist/shabbat_controller.js`, Save, enable **Run on startup**, **Start**.
+   paste `shabbat_controller.js`, Save, enable **Run on startup**, **Start**.
 2. **Settings page** - Scripts -> Create script named exactly **`shabbat_ui`**,
-   paste `dist/shabbat_ui.js`, Save. **Do not start it and do not enable Run on startup.**
+   paste `shabbat_ui.js`, Save. **Do not start it and do not enable Run on startup.**
    It only stores the page code (the browser reads it with `Script.GetCode`).
    (Or let `tools/deploy.py` below do steps 1-2.)
 3. Switch settings -> power-on default: **Off** (fail-safe if the controller is ever stopped).
 4. Open `http://<shelly-ip>/script/<controller id>/ui` (the console prints the exact URL).
 
 ### Upgrading from a computer
-`tools/deploy.py` uploads `dist/` to the device over its RPC API (Python, no dependencies;
-`python3 tools/deploy.py ...` works too):
+`tools/deploy.py` uploads the scripts to the device over its RPC API (Python, no
+dependencies; `python3 tools/deploy.py ...` works too):
 ```
-uv run tools/deploy.py 192.168.1.50                    # LAN IP
+uv run tools/deploy.py 192.168.1.50 --release latest   # the latest GitHub release
+uv run tools/deploy.py 192.168.1.50 --release v1.0.0   # a specific release
+uv run tools/deploy.py 192.168.1.50 --build            # build this checkout and install it
 uv run tools/deploy.py shelly.example.com --dry-run    # domain; only show what would change
-uv run tools/deploy.py 192.168.1.50 --build            # rebuild dist/ first
 ```
+Without `--release` it installs `dist/` of this checkout (`npm run build`). While the
+repository is private, `--release` needs a GitHub token: `GITHUB_TOKEN` / `GH_TOKEN`, or a
+logged-in `gh` CLI. It prints the version on the device and the one being installed.
 It finds the controller (name starting `shabbat_controller`, or the old `shabbat_elevator`,
 which it renames) and `shabbat_ui` scripts, creating them if missing, uploads only scripts whose code differs, verifies each upload by reading it back,
 restarts the controller, keeps `shabbat_ui` stopped, and prints memory use and the next window.
@@ -71,8 +77,9 @@ gets English; the button in the header switches language and the browser remembe
   relay drops at the end of the interval even if the script stops. Manual switching (app,
   button, web) is respected until the next timer event ("return to automatic" button).
 - **Relay log**: last 15 on/off events with cause (automatic / manual / firmware auto-off /
-  fail-safe / test), kept on the device. **Diagnostics**: firmware, uptime, clock sync,
-  script memory and errors (read by the browser from firmware RPCs).
+  fail-safe / test), kept on the device. **Technical info**: version, firmware, uptime, clock
+  sync, device memory and storage, script memory and errors (read by the browser from firmware
+  RPCs, so it costs the controller no memory).
 - **Hebrew dates** on windows (browser's built-in Hebrew calendar).
 - **Schedule**: every window in the table, by year, holidays-only filter, past windows.
 - **Forecast**: next 6 windows with merged ON times, computed by the device for the
@@ -86,13 +93,29 @@ gets English; the button in the header switches language and the browser remembe
 - Timer = `[anchor 0/1/2, value, duration, applies 0/1/2, days 0/1/2, enabled 0/1]`
 
 ## Development
-The sources in `src/` are formatted with Prettier; `dist/` is generated - edit `src/`, then build.
+Edit `src/`; `dist/` is build output and is not committed. Sources are formatted with Prettier.
 ```
-npm install            # prettier + terser
+npm install            # prettier, terser, playwright
 npm run format         # format src/, test/, tools/ (npm run format:check to verify)
 npm run build          # src/ -> dist/
-npm test               # simulator + browser test of the settings page (needs Playwright)
+npm test               # build, then the simulator and a browser test of the settings page
+npm run check:table    # regenerate the table with hdate and fail if it changed (needs uv)
 ```
+The browser test needs Chromium for Playwright: `npx playwright install chromium` once.
+
+Every push to `main` and every pull request runs the same checks in GitHub Actions
+(`.github/workflows/ci.yml`); the build and the page screenshots are attached to the run.
+
+## Releasing
+Push a version tag; `.github/workflows/release.yml` builds with that version stamped into
+every file, runs the tests and publishes a GitHub release with the three scripts:
+```
+git tag v1.0.0
+git push origin v1.0.0
+```
+The version is the first line of each file (`... - version v1.0.0 - ...`). Local builds use
+`git describe` (`v1.0.0-3-gabc1234`, or `dev-abc1234` before the first tag); the settings page
+(Technical info) and `deploy.py` show it.
 
 ## Layout
 - `src/main.js` controller, `src/ui.js` settings page, `src/table.js` generated table
@@ -100,12 +123,14 @@ npm test               # simulator + browser test of the settings page (needs Pl
   `test/windows.json` (the simulator's reference). To extend or move the table:
   `uv run tools/gen_table.py --years 2025 ... 2035` (`--lat/--lon` for another city), then
   `npm run build`. The Python tools declare their dependencies in a PEP 723 header, so uv
-  installs hdate on the fly; without uv, `pip install hdate` and run them with `python3`
+  installs hdate on the fly; without uv, `pip install hdate==1.2.2` and run them with
+  `python3`. hdate is pinned: a new version may move times, so bump it on purpose
 - `tools/build.mjs` (`npm run build`) -> `dist/shabbat_controller.js`, `dist/shabbat_controller_diag.js`,
   `dist/shabbat_ui.js`. Minifies with terser: the page fully; the controller only by renaming
   local variables and dropping whitespace (no code restructuring, which could break the engine
   limits below). Top-level names are kept for `test/sim.js`
-- `tools/deploy.py` uploads `dist/` to a device (see "Upgrading from a computer")
+- `tools/deploy.py` uploads a build or a release to a device (see "Upgrading from a computer")
+- `.github/workflows/` CI (format, build, tests, table check) and releases
 - `test/sim.js` device simulator (minute-by-minute relay sweep vs an independent reference)
 - `test/mockdevice.js` + `test/ui_test.js` fake Shelly + Playwright browser test of the page
 

@@ -12,15 +12,35 @@
 //
 // The settings page runs in the browser (via new Function), so it gets full minification.
 //
+// Version: VERSION env var (set by the release workflow to the tag, e.g. v1.0.0), otherwise
+// `git describe` (v1.0.0-3-gabc1234, or dev-abc1234 before the first tag), otherwise "dev".
+// It goes in the first line of every file ("... - version v1.0.0 - ..."), where the settings
+// page and tools/deploy.py read it - it costs the running controller no memory.
+//
 // Usage: npm run build   (after npm install)
 
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { execSync } from "node:child_process";
 import { minify } from "terser";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const read = (p) => readFileSync(join(ROOT, p), "utf8");
+
+function version() {
+  if (process.env.VERSION) return process.env.VERSION;
+  try {
+    const d = execSync("git describe --tags --always --dirty", { cwd: ROOT, stdio: "pipe" })
+      .toString()
+      .trim();
+    return /^v\d/.test(d) ? d : "dev-" + d;
+  } catch (e) {
+    return "dev";
+  }
+}
+const VERSION = version();
+if (!/^[\w.+-]+$/.test(VERSION)) throw new Error("bad VERSION: " + VERSION);
 
 // Both outputs must be pure ASCII: Script.GetCode is read in small byte ranges (large reads
 // can reboot the device) and the firmware garbles a UTF-8 character split across two ranges.
@@ -34,7 +54,7 @@ async function controller(src) {
     mangle: { toplevel: false },
     format: { ...FORMAT, max_line_len: 200 }
   });
-  return "// Shabbat controller - built by tools/build.mjs from src/main.js\n" + out.code + "\n";
+  return `// Shabbat controller - version ${VERSION} - built by tools/build.mjs\n${out.code}\n`;
 }
 
 function squeezeCss(src) {
@@ -50,14 +70,16 @@ function squeezeCss(src) {
 }
 
 async function ui(src) {
+  if (!src.includes('"@@VERSION@@"')) throw new Error('src/ui.js: "@@VERSION@@" marker missing');
+  src = src.replace('"@@VERSION@@"', JSON.stringify(VERSION));
   const out = await minify(squeezeCss(src), {
     compress: { ecma: 2020 },
     mangle: { toplevel: true }, // runs inside new Function(), nothing outside sees its names
     format: { ...FORMAT, ecma: 2020, ascii_only: true }
   });
   return (
-    "// shabbat_ui - DO NOT START this script. It only stores the settings page code, " +
-    "loaded by the browser from /script/<id>/ui\n" +
+    `// shabbat_ui - version ${VERSION} - DO NOT START this script. It only stores the ` +
+    "settings page code, loaded by the browser from /script/<id>/ui\n" +
     out.code +
     "\n"
   );
@@ -95,3 +117,4 @@ for (const [name, code] of Object.entries(outputs)) {
   writeFileSync(dst, code);
   console.log(`${dst}: ${Buffer.byteLength(code)} bytes`);
 }
+console.log("version " + VERSION);

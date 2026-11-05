@@ -1,0 +1,35 @@
+name: Release
+
+# Push a version tag to publish a release:
+#   git tag v1.0.0 && git push origin v1.0.0
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write # create the release
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    env:
+      VERSION: ${{ github.ref_name }} # stamped into every built file
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm test # the release is built and tested in one go
+      - name: Check the version stamp
+        run: grep -q "version $VERSION " dist/shabbat_controller.js
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >
+          gh release create "$VERSION" --verify-tag --title "$VERSION" --generate-notes
+          dist/shabbat_controller.js dist/shabbat_ui.js dist/shabbat_controller_diag.js

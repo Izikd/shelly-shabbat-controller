@@ -8,8 +8,13 @@
     python3 tools/deploy.py 192.168.1.50
     python3 tools/deploy.py shelly-1-pro-2.example.com --password secret
     python3 tools/deploy.py 192.168.1.50 --dry-run      # only show what would change
+    python3 tools/deploy.py 192.168.1.50 --release latest   # install a GitHub release
 
-Steps: (optionally) rebuild dist/, find the controller and `shabbat_ui` scripts on the
+Where the scripts come from: dist/ of this checkout (`npm run build`, or --build), or with
+--release the files attached to a GitHub release. While the repository is private, a
+release download needs a token: GITHUB_TOKEN / GH_TOKEN, or a logged-in `gh` CLI.
+
+Steps: find the controller and `shabbat_ui` scripts on the
 device (creating them if missing), upload only the ones whose code differs, verify each
 upload by reading it back, restart the controller and report its memory and state.
 A script whose code already matches is left alone, so re-running is harmless.
@@ -38,6 +43,8 @@ CTRL_PREFIXES = ("shabbat_controller", "shabbat_elevator")
 CHUNK = 1024                      # characters per Script.PutCode call
 # Some reverse proxies / WAFs block Python's default "Python-urllib" user agent.
 USER_AGENT = "shabbat-deploy/1.0"
+REPO = "Izikd/shelly-shabbat-controller"
+GITHUB_API = os.environ.get("GITHUB_API_URL", "https://api.github.com")
 
 
 class RpcError(Exception):
@@ -181,8 +188,65 @@ class Shelly:
 
 def read_dist(name):
     path = os.path.join(ROOT, "dist", name)
+    if not os.path.exists(path):
+        raise SystemExit(f"error: {path} missing - run `npm run build`, or use --build or --release")
     with open(path, encoding="utf-8") as f:
         return f.read()
+
+
+def code_version(code):
+    """Version from the first line of a built script ("... - version v1.0.0 - ...")."""
+    m = re.search(r"version (\S+)", code.split("\n", 1)[0])
+    return m.group(1) if m else "unknown"
+
+
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, *args, **kwargs):
+        return None
+
+
+def github_token():
+    tok = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
+    if tok:
+        return tok
+    try:
+        out = subprocess.run(["gh", "auth", "token"], capture_output=True, text=True, timeout=10)
+        return out.stdout.strip() or None
+    except (OSError, subprocess.SubprocessError):
+        return None
+
+
+def release_files(repo, tag, names):
+    """Download the named assets of a GitHub release ("latest" or a tag). Returns
+    ({name: text}, tag)."""
+    token = github_token()
+
+    def get(url, accept, auth=True):
+        h = {"User-Agent": USER_AGENT, "Accept": accept}
+        if token and auth:
+            h["Authorization"] = f"Bearer {token}"
+        # asset downloads redirect to storage that rejects the GitHub token: follow by hand
+        opener = urllib.request.build_opener(_NoRedirect)
+        try:
+            with opener.open(urllib.request.Request(url, headers=h), timeout=60) as r:
+                return r.read()
+        except urllib.error.HTTPError as e:
+            if e.code in (301, 302, 303, 307, 308) and e.headers.get("Location"):
+                return get(e.headers["Location"], accept, auth=False)
+            if e.code == 404:
+                hint = "" if token else " (private repository? set GITHUB_TOKEN or log in with gh)"
+                raise SystemExit(f"error: release '{tag}' not found in {repo}{hint}")
+            raise SystemExit(f"error: GitHub {url}: HTTP {e.code} {e.reason}")
+
+    path = "releases/latest" if tag == "latest" else f"releases/tags/{urllib.parse.quote(tag)}"
+    rel = json.loads(get(f"{GITHUB_API}/repos/{repo}/{path}", "application/vnd.github+json"))
+    assets = {a["name"]: a for a in rel.get("assets", [])}
+    out = {}
+    for n in names:
+        if n not in assets:
+            raise SystemExit(f"error: release {rel.get('tag_name')} has no asset {n}")
+        out[n] = get(assets[n]["url"], "application/octet-stream").decode("utf-8")
+    return out, rel.get("tag_name")
 
 
 def find_or_create(dev, scripts, match, create_name, dry_run):
@@ -201,10 +265,12 @@ def deploy_one(dev, script, code, label, restart, dry_run):
     """Returns True when the code on the device was (or would be) replaced."""
     current = dev.get_code(script["id"]) if script else ""
     if current == code:
-        print(f"  {label}: id {script['id']} '{script['name']}' already up to date ({len(code)} chars)")
+        print(f"  {label}: id {script['id']} '{script['name']}' already up to date "
+              f"({code_version(code)}, {len(code)} chars)")
         return False
-    print(f"  {label}: id {script['id'] if script else '-'} "
-          f"'{script['name'] if script else '-'}' {len(current)} -> {len(code)} chars")
+    old = code_version(current) if current else "none"
+    print(f"  {label}: id {script['id'] if script else '-'} '{script['name'] if script else '-'}' "
+          f"{old} -> {code_version(code)} ({len(current)} -> {len(code)} chars)")
     if dry_run:
         return True
     if restart and script.get("running"):
@@ -212,8 +278,8 @@ def deploy_one(dev, script, code, label, restart, dry_run):
         print("    stopped")
     dev.put_code(script["id"], code)
     if dev.get_code(script["id"]) != code:
-        raise SystemExit(f"error: {label} verification failed - code on device differs from dist/. "
-                         "Re-run the deploy.")
+        raise SystemExit(f"error: {label} verification failed - code on device differs from what "
+                         "was uploaded. Re-run the deploy.")
     print("    verified")
     return True
 
@@ -223,19 +289,31 @@ def main():
     ap.add_argument("host", help="device IP or domain, optionally with http:// or https://")
     ap.add_argument("--password", default=os.environ.get("SHELLY_PASSWORD"),
                     help="device password (or set SHELLY_PASSWORD)")
-    ap.add_argument("--build", action="store_true", help="run `npm run build` first (needs `npm install`)")
+    src = ap.add_mutually_exclusive_group()
+    src.add_argument("--build", action="store_true",
+                     help="run `npm run build` first (needs `npm install`)")
+    src.add_argument("--release", metavar="TAG",
+                     help="install a GitHub release instead of dist/: a tag (v1.0.0) or 'latest'")
+    ap.add_argument("--repo", default=REPO, help=f"GitHub repository for --release (default {REPO})")
     ap.add_argument("--diag", action="store_true",
-                    help="install dist/shabbat_controller_diag.js (debug/memory logging) as the controller")
+                    help="install the diagnostic controller build (debug/memory logging)")
     ap.add_argument("--no-ui", action="store_true", help="do not touch the shabbat_ui script")
     ap.add_argument("--restart", action="store_true",
                     help="restart the controller even if its code is unchanged")
     ap.add_argument("--dry-run", action="store_true", help="show what would change, write nothing")
     args = ap.parse_args()
 
-    if args.build:
-        subprocess.run(["node", os.path.join(ROOT, "tools", "build.mjs")], check=True)
-    ctrl_code = read_dist("shabbat_controller_diag.js" if args.diag else "shabbat_controller.js")
-    ui_code = None if args.no_ui else read_dist("shabbat_ui.js")
+    ctrl_name = "shabbat_controller_diag.js" if args.diag else "shabbat_controller.js"
+    names = [ctrl_name] + ([] if args.no_ui else ["shabbat_ui.js"])
+    if args.release:
+        files, tag = release_files(args.repo, args.release, names)
+        print(f"Release {tag} from {args.repo}")
+    else:
+        if args.build:
+            subprocess.run(["node", os.path.join(ROOT, "tools", "build.mjs")], check=True)
+        files = {n: read_dist(n) for n in names}
+    ctrl_code = files[ctrl_name]
+    ui_code = None if args.no_ui else files["shabbat_ui.js"]
 
     dev = Shelly(args.host, args.password)
     info = dev.call("Shelly.GetDeviceInfo")

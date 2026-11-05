@@ -1,7 +1,7 @@
 #!/usr/bin/env -S uv run --script
 # /// script
 # requires-python = ">=3.10"
-# dependencies = ["hdate>=1.2"]
+# dependencies = ["hdate==1.2.2"]  # pinned: a new hdate may move times; bump on purpose
 # ///
 """
 Generate the Shabbat & Yom Tov window table for the Shelly script

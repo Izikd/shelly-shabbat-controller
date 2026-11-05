@@ -199,6 +199,10 @@ const NOW = 1793731800; // Tue 03/11/2026 20:50 Israel
   await en.waitForSelector("text=Firmware");
   const diagTxt = (await en.textContent("main")).replace(/[\u2066\u2069]/g, ""); // bidi isolates
   check(
+    /Version(v\d|dev)[\w.+-]*Device/.test(diagTxt) && !/controller \S+ · page/.test(diagTxt),
+    "version shown once (controller = page): " + (diagTxt.match(/Version.{0,40}/) || [""])[0]
+  );
+  check(
     /94\.7 KB of 260 KB \(36%\)/.test(diagTxt) &&
       /92\.0 KB of 512 KB \(18%\)/.test(diagTxt) &&
       /15\.5 KB used \(65%\) · peak 21\.3 KB \(90%\) · free 8\.2 KB/.test(diagTxt),

@@ -11,6 +11,8 @@ const fs = require("fs"),
   vm = require("vm"),
   http = require("http");
 const ROOT = path.join(__dirname, "..");
+if (!fs.existsSync(path.join(ROOT, "dist/shabbat_ui.js")))
+  throw new Error("dist/ missing - run `npm run build` (or `npm test`)");
 const CODE = fs.readFileSync(path.join(ROOT, "dist/shabbat_controller.js"), "utf8");
 const UI = Buffer.from(fs.readFileSync(path.join(ROOT, "dist/shabbat_ui.js"), "utf8"), "utf8");
 const port = +process.argv[2] || 8099;

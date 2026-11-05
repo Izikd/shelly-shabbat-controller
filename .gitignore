@@ -3,3 +3,5 @@ __pycache__/
 *.pyc
 # screenshots written by test/ui_test.js
 /*.png
+# build output: npm run build (releases attach it to GitHub Releases)
+dist/

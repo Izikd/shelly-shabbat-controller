@@ -6,10 +6,10 @@ const path = require("path");
 const vm = require("vm");
 
 const ROOT = path.join(__dirname, "..");
-const CODE = fs.readFileSync(
-  path.join(ROOT, "dist", process.env.BUILD || "shabbat_controller.js"),
-  "utf8"
-);
+const BUILT = path.join(ROOT, "dist", process.env.BUILD || "shabbat_controller.js");
+if (!fs.existsSync(BUILT))
+  throw new Error(BUILT + " missing - run `npm run build` (or `npm test`)");
+const CODE = fs.readFileSync(BUILT, "utf8");
 // Reference windows written by tools/gen_table.py: [start, end, kind 1=Shabbat 2=Yom Tov 3=both]
 const WINDOWS = JSON.parse(fs.readFileSync(path.join(ROOT, "test/windows.json"), "utf8"));
 
