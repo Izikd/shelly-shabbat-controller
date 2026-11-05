@@ -195,9 +195,14 @@ def read_dist(name):
 
 
 def code_version(code):
-    """Version from the first line of a built script ("... - version v1.0.0 - ...")."""
-    m = re.search(r"version (\S+)", code.split("\n", 1)[0])
-    return m.group(1) if m else "unknown"
+    """Version from the first line of a built script ("... - version v1.0.0 - commit e59860a
+    - ..."): "v1.0.0 (e59860a)" for a release build, "e59860a" for any other build."""
+    first = code.split("\n", 1)[0]
+    v, c = re.search(r"version (\S+)", first), re.search(r"commit (\S+)", first)
+    if not v and not c:
+        return "unknown"
+    cid = c.group(1) if c else "?"
+    return f"{v.group(1)} ({cid})" if v and v.group(1) != "dev" else cid
 
 
 class _NoRedirect(urllib.request.HTTPRedirectHandler):

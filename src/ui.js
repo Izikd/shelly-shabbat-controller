@@ -3,7 +3,16 @@
 // Plain ES5 + guard, so starting it on the Shelly by mistake does nothing.
 if (typeof document !== "undefined")
   (function () {
-    var UI_VERSION = "@@VERSION@@"; // set by tools/build.mjs
+    var UI_STAMP = "@@VERSION@@"; // "version v1.0.0 - commit e59860a", set by tools/build.mjs
+    // "v1.0.0 · e59860a" for a release build, "e59860a" for any other build
+    function verLabel(stamp) {
+      var v = (stamp || "").match(/version (\S+)/),
+        c = (stamp || "").match(/commit (\S+)/);
+      if (!v && !c) return "";
+      var cid = c ? c[1] : "?";
+      return v && v[1] !== "dev" ? v[1] + " · " + cid : cid;
+    }
+    var UI_VERSION = verLabel(UI_STAMP);
     var ID = window.SE_ID,
       TZ = "Asia/Jerusalem";
     var S = {
@@ -821,8 +830,8 @@ if (typeof document !== "undefined")
         g("/rpc/Script.GetCode?id=" + ID + "&offset=0&len=120")
       ])
         .then(function (r) {
-          var v = (r[4].data || "").match(/version (\S+)/);
-          S.diag = { info: r[0], sys: r[1], scr: r[2], sw: r[3], ver: v ? v[1] : "" };
+          var v = verLabel((r[4].data || "").split("\n")[0]);
+          S.diag = { info: r[0], sys: r[1], scr: r[2], sw: r[3], ver: v };
           render();
         })
         .catch(function (e) {

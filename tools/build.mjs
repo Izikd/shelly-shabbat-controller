@@ -12,10 +12,13 @@
 //
 // The settings page runs in the browser (via new Function), so it gets full minification.
 //
-// Version: VERSION env var (set by the release workflow to the tag, e.g. v1.0.0), otherwise
-// `git describe` (v1.0.0-3-gabc1234, or dev-abc1234 before the first tag), otherwise "dev".
-// It goes in the first line of every file ("... - version v1.0.0 - ..."), where the settings
-// page and tools/deploy.py read it - it costs the running controller no memory.
+// Version stamp, in the first line of every file, where the settings page and tools/deploy.py
+// read it (so it costs the running controller no memory):
+//   "... - version v1.0.0 - commit e59860a - ..."   a release build
+//   "... - version dev - commit e59860a - ..."      any other build
+// version: VERSION env var (the release workflow sets it to the tag), else the tag exactly on
+// HEAD if there is one, else "dev". commit: short HEAD id, "-dirty" if tracked files have
+// uncommitted changes, "unknown" outside git. No tags or releases are needed to build.
 //
 // Usage: npm run build   (after npm install)
 
@@ -28,19 +31,24 @@ import { minify } from "terser";
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const read = (p) => readFileSync(join(ROOT, p), "utf8");
 
-function version() {
-  if (process.env.VERSION) return process.env.VERSION;
+function git(cmd) {
   try {
-    const d = execSync("git describe --tags --always --dirty", { cwd: ROOT, stdio: "pipe" })
+    return execSync("git " + cmd, { cwd: ROOT, stdio: "pipe" })
       .toString()
       .trim();
-    return /^v\d/.test(d) ? d : "dev-" + d;
   } catch (e) {
-    return "dev";
+    return null; // not a git checkout, no tag on HEAD, ...
   }
 }
-const VERSION = version();
-if (!/^[\w.+-]+$/.test(VERSION)) throw new Error("bad VERSION: " + VERSION);
+function commit() {
+  const c = git("rev-parse --short=7 HEAD");
+  if (!c) return "unknown";
+  return git("diff --quiet HEAD --") === null ? c + "-dirty" : c;
+}
+const VERSION = process.env.VERSION || git("describe --tags --exact-match HEAD") || "dev";
+const COMMIT = commit();
+for (const v of [VERSION, COMMIT]) if (!/^[\w.+-]+$/.test(v)) throw new Error("bad version: " + v);
+const STAMP = `version ${VERSION} - commit ${COMMIT}`;
 
 // Both outputs must be pure ASCII: Script.GetCode is read in small byte ranges (large reads
 // can reboot the device) and the firmware garbles a UTF-8 character split across two ranges.
@@ -54,7 +62,7 @@ async function controller(src) {
     mangle: { toplevel: false },
     format: { ...FORMAT, max_line_len: 200 }
   });
-  return `// Shabbat controller - version ${VERSION} - built by tools/build.mjs\n${out.code}\n`;
+  return `// Shabbat controller - ${STAMP} - built by tools/build.mjs\n${out.code}\n`;
 }
 
 function squeezeCss(src) {
@@ -71,14 +79,14 @@ function squeezeCss(src) {
 
 async function ui(src) {
   if (!src.includes('"@@VERSION@@"')) throw new Error('src/ui.js: "@@VERSION@@" marker missing');
-  src = src.replace('"@@VERSION@@"', JSON.stringify(VERSION));
+  src = src.replace('"@@VERSION@@"', JSON.stringify(STAMP));
   const out = await minify(squeezeCss(src), {
     compress: { ecma: 2020 },
     mangle: { toplevel: true }, // runs inside new Function(), nothing outside sees its names
     format: { ...FORMAT, ecma: 2020, ascii_only: true }
   });
   return (
-    `// shabbat_ui - version ${VERSION} - DO NOT START this script. It only stores the ` +
+    `// shabbat_ui - ${STAMP} - DO NOT START this script. It only stores the ` +
     "settings page code, loaded by the browser from /script/<id>/ui\n" +
     out.code +
     "\n"
@@ -117,4 +125,4 @@ for (const [name, code] of Object.entries(outputs)) {
   writeFileSync(dst, code);
   console.log(`${dst}: ${Buffer.byteLength(code)} bytes`);
 }
-console.log("version " + VERSION);
+console.log(STAMP);

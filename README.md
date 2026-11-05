@@ -113,9 +113,13 @@ every file, runs the tests and publishes a GitHub release with the three scripts
 git tag v1.0.0
 git push origin v1.0.0
 ```
-The version is the first line of each file (`... - version v1.0.0 - ...`). Local builds use
-`git describe` (`v1.0.0-3-gabc1234`, or `dev-abc1234` before the first tag); the settings page
-(Technical info) and `deploy.py` show it.
+Releases are optional: local builds, tests and `deploy.py` work without any tag or release.
+
+Every build stamps its first line with the release and the commit it was built from:
+`... - version v1.0.0 - commit e59860a - ...` for a release, `version dev - commit e59860a` for
+any other build (`-dirty` if tracked files had uncommitted changes). The settings page shows
+it under Technical info as `v1.0.0 · e59860a` or `e59860a`, and `deploy.py` prints the
+version on the device and the one being installed.
 
 ## Layout
 - `src/main.js` controller, `src/ui.js` settings page, `src/table.js` generated table
