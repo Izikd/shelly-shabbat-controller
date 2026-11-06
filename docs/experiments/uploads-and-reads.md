@@ -70,6 +70,8 @@ per round trip). Entries are dated, newest last; keep the method so a test can b
   -> `v0.2.0-beta.1` (13f7a5d), -> `v0.2.0-beta.2` (same commit), -> `v0.2.0-beta.3`
   (cc48cfd, adds the version link and leaving beta).
 - **Result**: all three installs worked (owner's report); no timings were taken.
+- **Later the same day**: `v0.2.0-beta.3` -> stable `v0.2.0` (763c7c8, the first release
+  with commit-list notes) from the page also worked (owner's report).
 - **Not tested**: a connection drop mid-install; going back to stable with "Install stable"
   (it would reach `v0.1.0`, which has no update card, so only `deploy.py` could return).
 
