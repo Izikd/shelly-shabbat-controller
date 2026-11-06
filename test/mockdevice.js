@@ -229,7 +229,8 @@ http
       if (u.pathname === "/rpc/Script.Start") {
         if (+params.id !== 1) return json(res, 500, { code: -103, message: "not in the mock" });
         if (sc.running) return json(res, 200, { was_running: true });
-        if (!startController()) return json(res, 500, { code: -103, message: "script error" });
+        // what a Pro 1 (fw 2.0.3) answers for code that does not parse
+        if (!startController()) return json(res, 500, { code: -2, message: "syntax_error" });
         return json(res, 200, { was_running: false });
       }
       if (u.pathname === "/rpc/Script.GetCode") {
@@ -264,6 +265,8 @@ http
         flush();
         return;
       }
+      // like the device: a stopped script's RPC methods are gone
+      if (m) return json(res, 404, { code: 404, message: "No handler for Script." + m[1] });
       json(res, 404, { code: 404, message: "not found" });
     });
   })

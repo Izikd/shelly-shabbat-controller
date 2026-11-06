@@ -20,9 +20,14 @@ the device) or *design* (a rule we chose). Recheck on new firmware or other mode
   already be applied. `deploy.py` re-reads the code length and resumes (*design*).
 - The code of a running script cannot be replaced; stop it first (*doc*). The mock refuses it
   too.
-- **Uploading from the settings page** (*design*, not yet tried on hardware): the page's
+- **`Script.Start` of code that does not parse** answers HTTP 500
+  `{code: -2, message: "syntax_error"}` and the script stays stopped (*observed*); the page
+  treats that as a failure and puts the old code back. While a started controller is still
+  booting, its methods answer HTTP 404 `No handler for Script.ShabbatGet` (*observed*). The
+  mock answers both the same way.
+- **Uploading from the settings page** (*design*, tried on hardware on 2026-11-06, see
+  `../experiments/uploads-and-reads.md`): the page's
   Check for updates uses the same steps as `deploy.py` - 1 KB `PutCode` pieces as a JSON
   `POST` body, resume from the reported length after a lost reply, read back with 4 KB
   `GetCode` pieces and compare, controller stopped only for its own upload, old code put back
-  if anything fails after the stop. Not known yet: what `Script.Start` answers on a device
-  for code that fails to parse (the mock answers an error, which triggers the restore).
+  if anything fails after the stop.

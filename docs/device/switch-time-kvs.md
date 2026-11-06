@@ -14,9 +14,12 @@ the device) or *design* (a rule we chose). Recheck on new firmware or other mode
 - The page keeps its beta-channel choice in KVS key `shabbat_upd_beta`, written by the
   browser with `KVS.Set` (no script memory). It reads it with `KVS.GetMany {match}`, not
   `KVS.Get`, because `KVS.Get` of a missing key is an RPC error (HTTP 500, which the browser
-  logs as an error on every load) (*design*; the 500 is what the mock answers, not checked
-  on hardware). The docs show `GetMany`'s `items` both as an object keyed by name and as a
-  list of `{key, etag, value}`; the page accepts both, the mock answers the list (*doc*).
+  logs as an error on every load): `KVS.Get` of a missing key answers HTTP 500
+  `{code: -105, message: "Argument 'key', value '...' not found!"}` (*observed*, fw 2.0.3).
+  `KVS.GetMany {match}` answers a list, `{items: [{key, etag, value}], offset, total}`, and
+  `{items: [], ...}` for no match (*observed*; the docs also show `items` as an object, so the
+  page accepts both). Oddly `total` was 1 for an empty match too (*observed*). The mock
+  answers the list form.
 - KVS limits: keys up to 42 characters, values up to 253, at most 50 keys (*doc*).
 - `Sys.GetStatus`: `ram_size`, `ram_free`, `ram_min_free` (lowest since boot, reset only by a
   reboot), `fs_size`, `fs_free`, `uptime`, `reset_reason` (4 seen after a crash).

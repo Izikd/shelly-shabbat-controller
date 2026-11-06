@@ -40,3 +40,27 @@ per round trip). Entries are dated, newest last; keep the method so a test can b
 | 4 KB, 5 parallel | 0.8 s | 6 KB |
 | 8 KB, 3 parallel | 0.7 s | 24 KB |
 - **Decision**: 4 KB pieces in parallel (fast and gentle); never large reads.
+
+## 2026-11-06 - Installing an update from the settings page
+- **Question**: does the page's Check for updates -> Install work on the device, and what
+  does `Script.Start` answer for a controller that does not parse?
+- **Method**: Playwright against the Pro 1 (fw 2.0.3, through the tunnel), the `library`
+  branch served by the test script with builds re-stamped `v0.1.1-hwtest.1`
+  (`test/stamp.js`); the device ran a development build of 1cc0db5. One run with a
+  controller file that does not parse, one with the real build. Afterwards `deploy.py`
+  put the plain build back.
+- **Result**:
+  - Broken controller: page uploaded and verified (37 `PutCode` calls for both scripts),
+    `Script.Stop` ok, `Script.Start` -> HTTP 500 `{code: -2, message: "syntax_error"}`; the
+    page put the old code back and started it ("previous version was restored and is
+    running"). Controller stopped 10.6 s (most of it re-uploading the backup); whole
+    install 30.5 s.
+  - Good build: both scripts became `v0.1.1-hwtest.1`, controller stopped 8.2 s, then
+    `ShabbatGet` answered 404 `No handler` until its boot finished; saved timers
+    (`shabbat_elev_cfg`) byte-for-byte unchanged; `mem_used` 14,238, `mem_peak` 16,184
+    afterwards. No reboots.
+- **Not tested**: a lost reply in the middle of an upload (resume path), and installing an
+  actual published release (no release with this feature exists yet).
+- **Decision**: works as designed; the mock now answers `syntax_error` and `No handler`
+  like the device.
+

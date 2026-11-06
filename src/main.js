@@ -562,14 +562,14 @@ let UI_A =
 // assembled per request: keeping the assembled copy too cost ~1.4 KB of script memory.
 // To shorten the chain of round trips through a slow link, the loader starts the status
 // request (window.SE_FIRST, used by the page's first refresh) together with the code, and
-// reads the first 5 pieces (20 KB) in one parallel round, the rest (if any) in a second round;
+// reads the first 6 pieces (24 KB, the whole page) in one parallel round, any rest in a second;
 // reads past the end
 // return no data. With no known id, or code that is not shabbat_ui, it looks the id up.
 let UI_B =
   ";(async function(){try{let id=window.SE_ID,ui=window.SE_UI;" +
   'window.SE_FIRST=fetch("/rpc/Script.ShabbatGet",{method:"POST",body:JSON.stringify({id:id})}).then(function(r){return r.json()});' +
   'let g=function(u,o){return fetch("/rpc/Script.GetCode?id="+u+"&len=4096&offset="+o).then(function(r){return r.json()})};' +
-  "let R=async function(u){let p=[];for(let i=0;i<5;i++)p.push(g(u,i*4096));let r=await Promise.all(p);" +
+  "let R=async function(u){let p=[];for(let i=0;i<6;i++)p.push(g(u,i*4096));let r=await Promise.all(p);" +
   'if(!r[0].data||r[0].data.indexOf("// shabbat_ui")!==0)return null;' +
   'let n=r[0].data.length+r[0].left,c="";for(let x of r)c+=x.data||"";' +
   "let o=c.length;while(o<n){let b=[];for(let i=0;i<4&&o<n;i++,o+=4096)b.push(g(u,o));for(let x of await Promise.all(b))c+=x.data;}" +

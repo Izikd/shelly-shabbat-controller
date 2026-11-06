@@ -48,10 +48,29 @@ per round trip). Entries are dated, newest last; keep the method so a test can b
 - **Effect**: the loader reads 5 x 4 KB = 20,480 bytes in its first parallel round, so the
   last 245 bytes need a second round on every load (~0.4-1.3 s through the tunnel, a few ms
   on the LAN).
-- **Open** (owner's decision): accept the extra round, read 6 pieces in the first round
-  (memory not measured for 6 parallel reads), or cut ~250 bytes elsewhere in the page.
+- **Settled** by the hardware entry below: the loader now reads 6 pieces in its first round.
 - **Later the same day**: the beta channel switch took the page to 21,093 bytes (613 over the
   first round).
+
+## 2026-11-06 - The 21 KB page on hardware: load time, and 5 vs 6 parallel reads
+- **Method**: Pro 1, fw 2.0.3, through the tunnel. Load time: 7 cold loads each (fresh
+  browser context), time to the first rendered status (`.kv`), before and after installing
+  the bigger page. Memory: `Shelly.Reboot`, wait for the controller, then one round of N
+  parallel 4 KB `GetCode` reads of `shabbat_ui`, comparing `ram_min_free` before and after;
+  3 runs each, alternating.
+- **Result**:
+| | 17,968 B page, 5 reads | 21,076 B page, 6 reads |
+|---|---|---|
+| Load, median of 7 | 2.39 s | 2.54 s |
+| Load, range | 1.78-3.79 s | 1.73-4.80 s |
+| Extra RAM, one round of 5 parallel reads | 0, 9.2, 4.3 KB | |
+| Extra RAM, one round of 6 parallel reads | | 6.7, 12.7, 10.6 KB |
+  About 100 KB was free before the reads; no reboots or errors.
+- **Reading**: the second read round costs ~0.15 s here, within the tunnel's noise. Six
+  parallel reads cost about 5-6 KB more RAM than five; still well below the ~28 KB single
+  read that rebooted the device.
+- **Decision** (owner): the loader reads 6 pieces (24 KB) in its first round, so the 21 KB
+  page loads in one round again; reads past the end return no data, as before.
 
 ## Ideas not tried yet
 - Inline the first status into the HTML (saves one round trip; costs controller work per
