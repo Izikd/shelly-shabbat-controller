@@ -202,7 +202,16 @@ def code_version(code):
     if not v and not c:
         return "unknown"
     cid = c.group(1) if c else "?"
-    return f"{v.group(1)} ({cid})" if v and v.group(1) != "dev" else cid
+    label = f"{v.group(1)} ({cid})" if v and v.group(1) != "dev" else cid
+    b = re.search(r"built (\S+)", first)
+    return f"{label}, built {b.group(1)}" if b else label
+
+
+def same_code(a, b):
+    """Equal apart from the build time in the first line: rebuilding the same commit must not
+    re-upload (and restart the controller) just because the clock moved."""
+    strip = lambda s: re.sub(r" - built \d{4}-\d\d-\d\dT\d\d:\d\dZ", "", s, count=1)
+    return strip(a) == strip(b)
 
 
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -269,7 +278,7 @@ def find_or_create(dev, scripts, match, create_name, dry_run):
 def deploy_one(dev, script, code, label, restart, dry_run):
     """Returns True when the code on the device was (or would be) replaced."""
     current = dev.get_code(script["id"]) if script else ""
-    if current == code:
+    if same_code(current, code):
         print(f"  {label}: id {script['id']} '{script['name']}' already up to date "
               f"({code_version(code)}, {len(code)} chars)")
         return False

@@ -14,8 +14,8 @@
 //
 // Version stamp, in the first line of every file, where the settings page and tools/deploy.py
 // read it (so it costs the running controller no memory):
-//   "... - version v1.0.0 - commit e59860a - ..."   a release build
-//   "... - version dev - commit e59860a - ..."      any other build
+//   "... - version v1.0.0 - commit e59860a - built 2026-11-06T08:20Z ..."   a release build
+//   "... - version dev - commit e59860a - built 2026-11-06T08:20Z ..."      any other build
 // version: VERSION env var (the release workflow sets it to the tag), else the tag exactly on
 // HEAD if there is one, else "dev". commit: short HEAD id, "-dirty" if tracked files have
 // uncommitted changes, "unknown" outside git. No tags or releases are needed to build.
@@ -49,7 +49,14 @@ function commit() {
 const VERSION = process.env.VERSION || git("describe --tags --exact-match HEAD") || "dev";
 const COMMIT = commit();
 for (const v of [VERSION, COMMIT]) if (!/^[\w.+-]+$/.test(v)) throw new Error("bad version: " + v);
-const STAMP = `version ${VERSION} - commit ${COMMIT}`;
+// build time, ISO 8601 in UTC to the minute; SOURCE_DATE_EPOCH (the reproducible-builds
+// convention) fixes it, otherwise now
+const built = process.env.SOURCE_DATE_EPOCH
+  ? new Date(+process.env.SOURCE_DATE_EPOCH * 1000)
+  : new Date();
+if (isNaN(built)) throw new Error("bad SOURCE_DATE_EPOCH: " + process.env.SOURCE_DATE_EPOCH);
+const BUILT = built.toISOString().slice(0, 16) + "Z"; // 2026-11-06T08:20Z
+const STAMP = `version ${VERSION} - commit ${COMMIT} - built ${BUILT}`;
 
 // Both outputs must be pure ASCII: Script.GetCode is read in small byte ranges (large reads
 // can reboot the device) and the firmware garbles a UTF-8 character split across two ranges.
@@ -63,7 +70,7 @@ async function controller(src) {
     mangle: { toplevel: false },
     format: { ...FORMAT, max_line_len: 200 }
   });
-  return `// Shabbat controller - ${STAMP} - built by tools/build.mjs\n${out.code}\n`;
+  return `// Shabbat controller - ${STAMP} (tools/build.mjs)\n${out.code}\n`;
 }
 
 function squeezeCss(src) {

@@ -199,9 +199,13 @@ const NOW = 1793731800; // Tue 03/11/2026 20:50 Israel
   await en.waitForSelector("text=Firmware");
   const diagTxt = (await en.textContent("main")).replace(/[\u2066\u2069]/g, ""); // bidi isolates
   check(
-    /Version([0-9a-f]{7}(-dirty)?|v\d[\w.+-]* · [0-9a-f]{7}(-dirty)?)Device/.test(diagTxt) &&
+    /Version([0-9a-f]{7}(-dirty)?|v\d[\w.+-]* · [0-9a-f]{7}(-dirty)?)Built/.test(diagTxt) &&
       !/controller \S+ · page/.test(diagTxt),
     "version shown once (controller = page): " + (diagTxt.match(/Version.{0,40}/) || [""])[0]
+  );
+  check(
+    /Built\d{4}-\d\d-\d\d \d\d:\d\dDevice/.test(diagTxt),
+    "build time shown once: " + (diagTxt.match(/Built.{0,40}/) || [""])[0]
   );
   check(
     /94\.7 KB of 260 KB \(36%\)/.test(diagTxt) &&

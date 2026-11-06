@@ -13,6 +13,12 @@ if (typeof document !== "undefined")
       return v && v[1] !== "dev" ? v[1] + " · " + cid : cid;
     }
     var UI_VERSION = verLabel(UI_STAMP);
+    // build time from the stamp, ISO 8601 UTC ("built 2026-11-06T08:20Z") -> UTC seconds
+    function builtAt(stamp) {
+      var m = (stamp || "").match(/built (\d{4})-(\d\d)-(\d\d)T(\d\d):(\d\d)Z/);
+      return m ? Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]) / 1000 : 0;
+    }
+    var UI_BUILT = builtAt(UI_STAMP);
     var ID = window.SE_ID,
       TZ = "Asia/Jerusalem";
     var S = {
@@ -99,6 +105,7 @@ if (typeof document !== "undefined")
         tech: "מידע טכני",
         techErr: "מידע טכני: {0}",
         dVersion: "גרסה",
+        dBuilt: "נבנה",
         dVerBoth: "בקר {0} · דף {1}",
         dDevice: "מכשיר",
         dFirmware: "קושחה",
@@ -225,6 +232,7 @@ if (typeof document !== "undefined")
         tech: "Technical info",
         techErr: "Technical info: {0}",
         dVersion: "Version",
+        dBuilt: "Built",
         dVerBoth: "controller {0} · page {1}",
         dDevice: "Device",
         dFirmware: "Firmware",
@@ -754,6 +762,12 @@ if (typeof document !== "undefined")
       function pct(n, total) {
         return total ? Math.round((n * 100) / total) + "%" : "—";
       }
+      // build time in Israel time, ISO-like: "2026-11-06 10:20"
+      function stampTime(t) {
+        if (!t) return "—";
+        var p = parts(t);
+        return p.year + "-" + p.month + "-" + p.day + " " + p.hour + ":" + p.minute;
+      }
       function ofTotal(free, total) {
         return total ? tr(L.dOfFmt, kb(free), kb(total), pct(free, total)) : kb(free);
       }
@@ -764,6 +778,12 @@ if (typeof document !== "undefined")
         [
           L.dVersion,
           d.ver === UI_VERSION || !d.ver ? UI_VERSION : tr(L.dVerBoth, d.ver, UI_VERSION)
+        ],
+        [
+          L.dBuilt,
+          !d.built || d.built === UI_BUILT
+            ? stampTime(UI_BUILT)
+            : tr(L.dVerBoth, stampTime(d.built), stampTime(UI_BUILT))
         ],
         [L.dDevice, d.info.model + " · " + d.info.id],
         [L.dFirmware, d.info.ver],
@@ -830,8 +850,15 @@ if (typeof document !== "undefined")
         g("/rpc/Script.GetCode?id=" + ID + "&offset=0&len=120")
       ])
         .then(function (r) {
-          var v = verLabel((r[4].data || "").split("\n")[0]);
-          S.diag = { info: r[0], sys: r[1], scr: r[2], sw: r[3], ver: v };
+          var first = (r[4].data || "").split("\n")[0];
+          S.diag = {
+            info: r[0],
+            sys: r[1],
+            scr: r[2],
+            sw: r[3],
+            ver: verLabel(first),
+            built: builtAt(first)
+          };
           render();
         })
         .catch(function (e) {

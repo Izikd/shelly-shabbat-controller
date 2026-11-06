@@ -120,11 +120,13 @@ git push origin v1.0.0
 ```
 Releases are optional: local builds, tests and `deploy.py` work without any tag or release.
 
-Every build stamps its first line with the release and the commit it was built from:
-`... - version v1.0.0 - commit e59860a - ...` for a release, `version dev - commit e59860a` for
-any other build (`-dirty` if tracked files had uncommitted changes). The settings page shows
-it under Technical info as `v1.0.0 · e59860a` or `e59860a`, and `deploy.py` prints the
-version on the device and the one being installed.
+Every build stamps its first line with the release, the commit and the build time (ISO 8601,
+UTC): `... - version v1.0.0 - commit e59860a - built 2026-11-06T08:20Z` for a release,
+`version dev - ...` for any other build (`-dirty` if tracked files had uncommitted changes).
+`SOURCE_DATE_EPOCH` sets the build time for a reproducible build. The settings page shows it
+under Technical info (`v1.0.0 · e59860a`, built `2026-11-06 10:20` Israel time), and
+`deploy.py` prints the version on the device and the one being installed. `deploy.py` ignores
+the build time when comparing, so rebuilding the same commit does not re-upload.
 
 ## Layout
 - `src/main.js` controller, `src/ui.js` settings page, `src/table.js` generated table,
