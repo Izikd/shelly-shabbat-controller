@@ -87,6 +87,8 @@ It finds the controller (name starting `shabbat_controller`, or the old `shabbat
 which it renames) and `shabbat_ui` scripts, creating them if missing, uploads only scripts whose code differs, verifies each upload by reading it back,
 restarts the controller, keeps `shabbat_ui` stopped, and prints memory use and the next window.
 Re-running is harmless. Options: `--password` (or `SHELLY_PASSWORD`), `--no-ui`, `--restart`.
+The device address can come from `SHELLY_HOST` instead of the command line (handy in a
+cloud environment, so the address stays out of commands and files).
 
 Debug logging (one line per tick on the device's debug console) can be switched on in the
 running controller, until its next restart:

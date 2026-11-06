@@ -300,7 +300,9 @@ def deploy_one(dev, script, code, label, restart, dry_run):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    ap.add_argument("host", help="device IP or domain, optionally with http:// or https://")
+    ap.add_argument("host", nargs="?", default=os.environ.get("SHELLY_HOST"),
+                    help="device IP or domain, optionally with http:// or https:// "
+                         "(or set SHELLY_HOST)")
     ap.add_argument("--password", default=os.environ.get("SHELLY_PASSWORD"),
                     help="device password (or set SHELLY_PASSWORD)")
     src = ap.add_mutually_exclusive_group()
@@ -314,6 +316,8 @@ def main():
                     help="restart the controller even if its code is unchanged")
     ap.add_argument("--dry-run", action="store_true", help="show what would change, write nothing")
     args = ap.parse_args()
+    if not args.host:
+        ap.error("no device: give its address, or set SHELLY_HOST")
 
     ctrl_name = "shabbat_controller.js"
     names = [ctrl_name] + ([] if args.no_ui else ["shabbat_ui.js"])

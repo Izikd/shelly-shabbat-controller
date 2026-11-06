@@ -135,6 +135,10 @@ messages, CI logs and workflow artifacts, can be read by anyone and is hard to t
   uploads the page before stopping the controller, retries dropped requests and resumes
   uploads safely. A changed commit restarts the controller; avoid deploying during an active
   window on a device that drives something real.
+- The test device's address is in the environment variable `SHELLY_HOST` (set in the cloud
+  environment, never in the repository), which `deploy.py` uses when no host is given:
+  `uv run tools/deploy.py --dry-run`. Use `$SHELLY_HOST` in commands; do not write the
+  address into files, commits or docs.
 - Prefer `--dry-run` first on an unfamiliar device. `deploy.py` prints the installed version
   (`<sha>` or `v1.0.0 (<sha>)`, plus build time); the page shows it under Technical info.
 - The device the project is developed on is a Shelly Pro 1 used only for experiments
