@@ -22,6 +22,10 @@ is `docs/README.md`. Keeping these notes current is part of every change: see
 
 ## Workflow
 - Commit directly to `main`; no pull requests (the owner's preference). Push when done.
+- Do not push other branches. Work on a local branch if you like, then push to `main` only.
+  If a branch was pushed anyway (e.g. by a tool), delete it from the remote once it is
+  merged (`git push origin --delete <branch>`). The only long-lived branches are `main` and
+  `library` (written by the release workflow).
 - Before pushing: `npm run format` and `npm test` (builds, checks the docs' links and
   index, then all three test suites). CI runs the same checks plus `npm run check:table`.
 - Releases are not in use yet. Never push a `v*` tag unless asked. Everything works without
