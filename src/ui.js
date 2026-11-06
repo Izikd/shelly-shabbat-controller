@@ -148,6 +148,10 @@ if (typeof document !== "undefined")
         updVerify: "אימות נכשל",
         updBeta: "גרסאות בטא",
         updBetaHint: "להציע גם גרסאות ניסיון",
+        updOnBeta: "מותקנת גרסת בטא ({0}). תוצע הגרסה היציבה הבאה כשתהיה חדשה ממנה.",
+        updStable: "התקן גרסה יציבה {0}",
+        updDowngrade:
+          "להתקין את {0}? היא ישנה מהגרסה המותקנת. ההגדרות נשמרות, אלא אם בהערות של גרסת הבטא כתוב שמבנה ההגדרות השתנה - אז הטיימרים עלולים לחזור לברירת המחדל.",
         shabbatOnly: " · שבת בלבד",
         ytOnly: " · יו״ט בלבד",
         afterCandles: "אחרי הדלקת נרות",
@@ -299,6 +303,11 @@ if (typeof document !== "undefined")
         updVerify: "verification failed",
         updBeta: "Beta versions",
         updBetaHint: "Also offer test releases",
+        updOnBeta:
+          "Beta {0} is installed. You'll be offered the next stable release once it's newer.",
+        updStable: "Install stable {0}",
+        updDowngrade:
+          "Install {0}? It is older than the installed version. Settings are kept unless the beta's release notes say the settings format changed; then the timers may reset to the defaults.",
         shabbatOnly: " · Shabbat only",
         ytOnly: " · Yom Tov only",
         afterCandles: "After candle lighting",
@@ -1237,12 +1246,18 @@ if (typeof document !== "undefined")
             iv = stampVer(ctrl),
             uv = stampVer(UI_STAMP);
           rel.inst = verLabel(ctrl) || "?";
+          // "onbeta": beta switched off while a beta newer than the stable release runs. Like
+          // other beta programmes, leaving the channel does not downgrade: the next stable
+          // release newer than the beta is offered as usual, and going back to the older
+          // stable one now is a separate, explicit choice (with a warning)
           rel.state =
             !semver(iv) || !semver(uv)
               ? "dev"
               : cmpVer(rel.v, iv) > 0 || cmpVer(rel.v, uv) > 0
                 ? "newer"
-                : "current";
+                : !S.beta && iv.indexOf("-") > 0 && cmpVer(rel.v, iv) < 0
+                  ? "onbeta"
+                  : "current";
           S.upd = rel;
           render();
         })
@@ -1323,7 +1338,9 @@ if (typeof document !== "undefined")
       var U = S.upd,
         backup = null,
         stopped = false;
-      var ask = tr(L.updConfirm, U.v) + (S.st && S.st.cur ? "\n\n" + L.updInWindow : "");
+      var ask =
+        tr(U.state === "onbeta" ? L.updDowngrade : L.updConfirm, U.v) +
+        (S.st && S.st.cur ? "\n\n" + L.updInWindow : "");
       if (!window.confirm(ask)) return;
       U.busy = true;
       U.err = "";
@@ -1415,12 +1432,16 @@ if (typeof document !== "undefined")
               ? tr(L.updCurrent, U.inst)
               : U.state === "newer"
                 ? tr(L.updNewer, U.v, U.inst)
-                : tr(L.updDev, U.inst, U.v)
+                : U.state === "onbeta"
+                  ? tr(L.updOnBeta, U.inst)
+                  : tr(L.updDev, U.inst, U.v)
           )
         );
       var btns = h("div", { cls: "line wrap" });
       if (U.state === "newer" || U.state === "dev")
         add(btns, h("button", { cls: "btn pri", onclick: installUpdate }, tr(L.updInstall, U.v)));
+      if (U.state === "onbeta")
+        add(btns, h("button", { cls: "btn", onclick: installUpdate }, tr(L.updStable, U.v)));
       add(btns, h("button", { cls: "btn", onclick: checkUpdate }, L.updCheck));
       if (U.v)
         add(

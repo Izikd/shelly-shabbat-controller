@@ -63,7 +63,11 @@ the page never contacts anything but the device on its own, and the device needs
 internet. **Beta versions** (a switch in the same card, kept on the device, so every
 browser opening it sees the same choice) also offers pre-releases from the `library-beta`
 branch; the newer of the stable and the beta release is offered, so testers get stable
-releases too. If a newer version is available, **Install** uploads both scripts the way
+releases too. **Leaving beta**: switching it off does not downgrade. While a beta newer than
+the latest stable release is installed, the card says so and the next stable release newer
+than the beta is offered as usual; **Install stable vX** goes back to the older stable
+release now, after a warning (settings are kept unless the beta's release notes say the
+settings format changed). If a newer version is available, **Install** uploads both scripts the way
 `deploy.py` does: the settings page first, then the controller is stopped, uploaded, verified
 by reading it back and started again (a few seconds without relay control; timers, settings
 and the log are kept). If anything fails after the stop, the previous controller code is put

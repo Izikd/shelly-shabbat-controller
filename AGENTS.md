@@ -119,7 +119,13 @@ Each has a reason in `docs/device/` and `docs/experiments/`.
   a feature that would cross it needs the owner's decision
   (`docs/experiments/page-size-and-load.md`).
 - **KVS keys `shabbat_elev_cfg` / `shabbat_elev_log` keep their names** (old project name):
-  renaming them loses users' timers and log. `shabbat_upd_beta` ("1" / "0") is the page's
+  renaming them loses users' timers and log.
+- **Older releases must keep reading the saved settings**: users can go back from a beta to
+  an older stable release from the page ("Install stable"). An older controller keeps only
+  `t`, `a`, `s` of `shabbat_elev_cfg` and falls back to its default timers (until the next
+  save) if `t` does not pass its `validTimer` (exactly 6 integers per timer). So add new
+  settings as new top-level fields, never change the shape of a timer or the meaning of an
+  existing field; if a change cannot avoid it, say so in that release's notes. `shabbat_upd_beta` ("1" / "0") is the page's
   beta-channel choice, written by the browser with the firmware's `KVS.Set`.
 - **`shabbat_ui` never runs on the device**; it only stores the page code. deploy.py keeps it
   stopped and disabled.

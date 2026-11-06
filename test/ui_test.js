@@ -417,8 +417,40 @@ const listening = (proc) =>
   );
   await up.click("text=Check for updates");
   await up.waitForSelector("text=Version v0.3.0 is available");
+
+  // leaving beta: install the beta, switch beta off -> no downgrade offered as an update, the
+  // card says a beta is installed; "Install stable" goes back explicitly, after a warning
+  setLib(
+    restamp(dist("shabbat_controller.js"), "v0.2.0"),
+    restamp(dist("shabbat_ui.js"), "v0.2.0")
+  );
+  await up.click("text=Check for updates");
+  await up.waitForSelector("text=Version v0.3.0-beta.1 is available");
+  up.once("dialog", (d) => d.accept());
+  await up.click("text=Install v0.3.0-beta.1");
+  await up.waitForSelector("text=Update installed", { timeout: 30000 });
+  await up.waitForEvent("load", { timeout: 15000 });
+  await up.waitForSelector("button[aria-label='Beta versions'][aria-pressed='true']");
   await up.click("button[aria-label='Beta versions']"); // back to stable only
   await up.waitForSelector("button[aria-label='Beta versions'][aria-pressed='false']");
+  await up.click("text=Check for updates");
+  await up.waitForSelector("text=Beta v0.3.0-beta.1 · ");
+  check(!(await up.isVisible("text=Install v0.2.0")), "leaving beta offers no automatic downgrade");
+  await up.screenshot({ path: path.join(out, "upd-4-left-beta.png"), fullPage: true });
+  let downgradeText = "";
+  up.once("dialog", (d) => {
+    downgradeText = d.message();
+    d.accept();
+  });
+  await up.click("text=Install stable v0.2.0");
+  check(
+    /older than the installed version/.test(downgradeText),
+    "downgrade warns: " + downgradeText
+  );
+  await up.waitForSelector("text=Update installed", { timeout: 30000 });
+  await up.waitForEvent("load", { timeout: 15000 });
+  await up.waitForSelector("text=Next relay ON");
+  check(/version v0\.2\.0 /.test(await ctrlFirst()), "back on stable v0.2.0");
   srv2.kill();
 
   check(errors.length === 0, "page errors: " + errors.join(" | "));
