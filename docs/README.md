@@ -26,5 +26,6 @@ undoing a decision.
   *doc*, *measured*, *observed* or *design*, with the firmware version if it differs.
 - A measurement goes in the matching `experiments/` file as a dated `##` entry:
   **Question / Method / Result / Decision**. Numbers, not impressions; say what was not tested.
-- A new file gets a line in this index.
+- A new file gets a line in this index. `npm test` (`tools/check_docs.mjs`) fails if a file
+  here is missing from the index, or a link or backticked repository path points to nothing.
 - No device addresses, hostnames or passwords: the repository may become public.

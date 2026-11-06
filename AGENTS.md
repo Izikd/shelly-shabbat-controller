@@ -5,30 +5,48 @@ with a settings page served by the device. See `README.md` for what it does and 
 install it. This file is how to work on it. Before changing device-facing code, read
 `docs/device/` (limits of the Shelly engine, learned on hardware) and skim
 `docs/experiments/` (what was measured, and why the code looks the way it does); the index
-is `docs/README.md`. Record new findings there, one file per topic.
+is `docs/README.md`. Keeping these notes current is part of every change: see
+"Done means" below.
 
 ## Layout
 - `src/main.js` controller (runs on the Shelly), `src/table.js` its generated window table
 - `src/ui.js` settings page (runs in the browser), `src/unpack.js` unpacks it in the browser
 - `tools/build.mjs` src -> `dist/` (not committed), `tools/deploy.py` uploads to a device,
-  `tools/gen_table.py` regenerates the table with hdate
+  `tools/gen_table.py` regenerates the table with hdate, `tools/check_docs.mjs` checks the
+  docs index, links and paths
 - `test/` simulator (`sim.js`), fallback decoder (`inflate_test.js`), Playwright test of the
   page against a mock device (`ui_test.js` + `mockdevice.js`)
 - `.github/workflows/` CI on push/PR, releases on `v*` tags
 
 ## Workflow
 - Commit directly to `main`; no pull requests (the owner's preference). Push when done.
-- Before pushing: `npm run format` and `npm test` (builds, then all three test suites).
-  CI runs the same checks plus `npm run check:table`.
+- Before pushing: `npm run format` and `npm test` (builds, checks the docs' links and
+  index, then all three test suites). CI runs the same checks plus `npm run check:table`.
 - Releases are not in use yet. Never push a `v*` tag unless asked. Everything works without
   tags: builds are stamped `version dev - commit <sha> - built <ISO time>`.
 - Commit messages: a short subject, then why, and what was measured or tested on hardware.
+
+## Done means: code, tests and notes together
+A change is not finished until the notes match it. In the same commit:
+- **You measured something on hardware** (timings, memory, sizes) -> a dated entry in the
+  matching `docs/experiments/` file: Question / Method / Result / Decision, with numbers.
+- **The device did something unexpected** (an error, a crash, a limit, a format) -> the
+  matching `docs/device/` file, marked *observed* and with the firmware version, **and** teach
+  the mock (`test/mockdevice.js` / `test/sim.js`) to behave the same way.
+- **A rule, command, workflow step or file layout changed** -> update this file.
+- **Your change makes an existing note wrong** (a read size, a limit, a number, a file name)
+  -> fix that note; do not leave it for later.
+- **You added a file under `docs/`** -> add it to the index in `docs/README.md`.
+  `npm test` fails if a docs file is missing from the index, or if a link or a repository
+  path in backticks in the docs points to nothing.
+- **When reporting back, say which notes you updated**, or that none needed changes and why.
 
 ## Commands
 ```
 npm install                     # once
 npm run format                  # prettier on src/ test/ tools/
-npm test                        # build + inflate_test + sim + ui_test
+npm test                        # build + docs check + inflate_test + sim + ui_test
+npm run check:docs              # docs index complete, links and paths resolve
 npm run build                   # dist/ only
 uv run tools/deploy.py <host> --build   # build and install on a device
 uv run tools/deploy.py <host> --dry-run # what would change

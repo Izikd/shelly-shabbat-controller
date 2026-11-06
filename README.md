@@ -105,6 +105,7 @@ npm run format         # format src/, test/, tools/ (npm run format:check to ver
 npm run build          # src/ -> dist/
 npm test               # build, then the simulator and a browser test of the settings page
 npm run check:table    # regenerate the table with hdate and fail if it changed (needs uv)
+npm run check:docs     # docs index complete, links and paths in the docs resolve (part of npm test)
 ```
 The browser test needs Chromium for Playwright: `npx playwright install chromium` once.
 

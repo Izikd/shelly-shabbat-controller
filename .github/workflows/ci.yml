@@ -23,7 +23,7 @@ jobs:
       - run: npm ci
       - run: npm run format:check
       - run: npx playwright install --with-deps chromium
-      - run: npm test # builds dist/, then the simulator and the browser test
+      - run: npm test # build, docs check, decoder, simulator and browser tests
       - name: Upload the build
         uses: actions/upload-artifact@v4
         with:

@@ -6,8 +6,9 @@
     "build": "node tools/build.mjs",
     "format": "prettier --write src test tools",
     "format:check": "prettier --check src test tools",
-    "test": "npm run build && node test/inflate_test.js && node test/sim.js && node test/ui_test.js",
-    "check:table": "uv run tools/gen_table.py && git diff --exit-code -- src/table.js test/windows.json"
+    "test": "npm run build && node tools/check_docs.mjs && node test/inflate_test.js && node test/sim.js && node test/ui_test.js",
+    "check:table": "uv run tools/gen_table.py && git diff --exit-code -- src/table.js test/windows.json",
+    "check:docs": "node tools/check_docs.mjs"
   },
   "devDependencies": {
     "playwright": "1.63.0",
