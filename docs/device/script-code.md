@@ -18,4 +18,11 @@ the device) or *design* (a rule we chose). Recheck on new firmware or other mode
   literal backslash-u, as in the ASCII page) is fine.
 - **`PutCode` must not be retried blindly with `append`**: if the reply was lost the chunk may
   already be applied. `deploy.py` re-reads the code length and resumes (*design*).
-- The code of a running script cannot be replaced; stop it first (*doc*).
+- The code of a running script cannot be replaced; stop it first (*doc*). The mock refuses it
+  too.
+- **Uploading from the settings page** (*design*, not yet tried on hardware): the page's
+  Check for updates uses the same steps as `deploy.py` - 1 KB `PutCode` pieces as a JSON
+  `POST` body, resume from the reported length after a lost reply, read back with 4 KB
+  `GetCode` pieces and compare, controller stopped only for its own upload, old code put back
+  if anything fails after the stop. Not known yet: what `Script.Start` answers on a device
+  for code that fails to parse (the mock answers an error, which triggers the restore).

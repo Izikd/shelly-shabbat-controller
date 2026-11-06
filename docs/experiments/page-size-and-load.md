@@ -41,6 +41,18 @@ per round trip). Entries are dated, newest last; keep the method so a test can b
   `mem_used` 14.5 -> 16.1 KB. Assembling it per request brought it to 14.2 KB.
 - **Remaining**: the HTML itself and tunnel variance (0.4-2 s per request).
 
+## 2026-11-06 - Check for updates makes the page bigger than one read round
+- **Measured** (local builds only, not on hardware): adding the Software update card took the
+  stored page from 17,971 to 20,725 bytes (minified page 29,993 -> 35,947 bytes). Shortening
+  its texts saved ~430 bytes; the rest is the upload / verify / restore logic.
+- **Effect**: the loader reads 5 x 4 KB = 20,480 bytes in its first parallel round, so the
+  last 245 bytes need a second round on every load (~0.4-1.3 s through the tunnel, a few ms
+  on the LAN).
+- **Open** (owner's decision): accept the extra round, read 6 pieces in the first round
+  (memory not measured for 6 parallel reads), or cut ~250 bytes elsewhere in the page.
+- **Later the same day**: the beta channel switch took the page to 21,093 bytes (613 over the
+  first round).
+
 ## Ideas not tried yet
 - Inline the first status into the HTML (saves one round trip; costs controller work per
   request).

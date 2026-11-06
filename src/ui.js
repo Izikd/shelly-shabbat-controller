@@ -124,6 +124,30 @@ if (typeof document !== "undefined")
         dLastSrc: "מקור פקודה אחרונה לממסר",
         dTemp: "טמפרטורה",
         refresh: "רענן",
+        upd: "עדכון תוכנה",
+        updHint: "בדיקה ב-GitHub, רק בלחיצה.",
+        updCheck: "בדוק עדכונים",
+        updChecking: "בודק…",
+        updCurrent: "מותקנת הגרסה האחרונה ({0}).",
+        updNewer: "גרסה {0} זמינה (מותקנת {1}).",
+        updDev: "גרסת פיתוח ({0}). אחרונה: {1}.",
+        updNotes: "מה חדש",
+        updInstall: "התקן {0}",
+        updConfirm: "להתקין את {0}? הבקר יופעל מחדש לכמה שניות; ההגדרות נשמרות.",
+        updInWindow: "שים לב: חלון שבת / יו״ט פעיל עכשיו.",
+        updUi: "מתקין את דף ההגדרות… {0}%",
+        updCtrl: "מתקין את הבקר… {0}%",
+        updRestart: "מפעיל מחדש את הבקר…",
+        updDone: "העדכון הותקן ✓ טוען מחדש…",
+        updFailed: "העדכון נכשל: {0}.",
+        updRestored: " הגרסה הקודמת הוחזרה ופועלת.",
+        updStopped: " הבקר עצור - הפעל אותו בדף הסקריפטים.",
+        updCheckFailed: "לא ניתן לבדוק: {0}",
+        updMismatch: "נסה שוב בעוד כמה דקות",
+        updBadFile: "קובץ לא תקין מהשרת",
+        updVerify: "אימות נכשל",
+        updBeta: "גרסאות בטא",
+        updBetaHint: "להציע גם גרסאות ניסיון",
         shabbatOnly: " · שבת בלבד",
         ytOnly: " · יו״ט בלבד",
         afterCandles: "אחרי הדלקת נרות",
@@ -251,6 +275,30 @@ if (typeof document !== "undefined")
         dLastSrc: "Last relay command source",
         dTemp: "Temperature",
         refresh: "Refresh",
+        upd: "Software update",
+        updHint: "Asks GitHub, only when pressed.",
+        updCheck: "Check for updates",
+        updChecking: "Checking…",
+        updCurrent: "The latest version is installed ({0}).",
+        updNewer: "Version {0} is available (installed: {1}).",
+        updDev: "Development build ({0}). Latest: {1}.",
+        updNotes: "What's new",
+        updInstall: "Install {0}",
+        updConfirm: "Install {0}? The controller restarts for a few seconds; settings are kept.",
+        updInWindow: "Note: a Shabbat / Yom Tov window is active now.",
+        updUi: "Installing the settings page… {0}%",
+        updCtrl: "Installing the controller… {0}%",
+        updRestart: "Restarting the controller…",
+        updDone: "Update installed ✓ Reloading…",
+        updFailed: "Update failed: {0}.",
+        updRestored: " The previous version was restored and is running.",
+        updStopped: " The controller is stopped - start it on the Scripts page.",
+        updCheckFailed: "Could not check: {0}",
+        updMismatch: "try again in a few minutes",
+        updBadFile: "invalid file from the server",
+        updVerify: "verification failed",
+        updBeta: "Beta versions",
+        updBetaHint: "Also offer test releases",
         shabbatOnly: " · Shabbat only",
         ytOnly: " · Yom Tov only",
         afterCandles: "After candle lighting",
@@ -394,6 +442,7 @@ if (typeof document !== "undefined")
       }, 250);
     }
     function refresh() {
+      if (S.upd && S.upd.busy) return; // the controller may be stopped for its upload
       // the first status was already requested by the loader, in parallel with this code
       var first = window.SE_FIRST;
       if (first) {
@@ -701,6 +750,7 @@ if (typeof document !== "undefined")
           st.test ? h("div", { cls: "warn" }, tr(L.testActive, full(st.test))) : null
         ),
         viewLog(),
+        viewUpdate(),
         viewDiag()
       ];
     }
@@ -1097,6 +1147,304 @@ if (typeof document !== "undefined")
         return batch(0);
       });
     }
+    // ---------- software update: only when the user presses "Check for updates" ----------
+    // The latest release is read from the repository's `library` branch (written only by the
+    // release workflow, from a tested build; the Shelly script library installs from the same
+    // place) on raw.githubusercontent.com, which allows cross-origin reads - GitHub release
+    // downloads do not. The browser downloads and uploads; the device needs no internet.
+    var REPO = "Izikd/shelly-shabbat-controller";
+    // stable releases go to the `library` branch, pre-releases (v1.2.3-beta.1) to
+    // `library-beta` (.github/workflows/release.yml)
+    var LIB = "https://raw.githubusercontent.com/" + REPO + "/";
+    // the beta choice is kept on the device (firmware KVS, written by the browser: no script
+    // memory), so every browser opening this device sees the same channel
+    var BETA_KEY = "shabbat_upd_beta";
+    function firstLine(code) {
+      return (code || "").split("\n")[0];
+    }
+    function stampVer(stamp) {
+      var m = (stamp || "").match(/version (\S+)/);
+      return m ? m[1] : "";
+    }
+    // "v1.2.3" or "v1.2.3-rc.1" -> [1, 2, 3, "-rc.1"]; null for "dev" and anything else
+    function semver(v) {
+      var m = /^v(\d+)\.(\d+)\.(\d+)(-[0-9A-Za-z.]+)?$/.exec(v || "");
+      return m ? [+m[1], +m[2], +m[3], m[4] || "~"] : null;
+    }
+    // > 0 when release a is newer than b. A pre-release is older than its release ("~" sorts
+    // after "-"); pre-releases of one version compare as text
+    function cmpVer(a, b) {
+      var x = semver(a),
+        y = semver(b);
+      for (var i = 0; i < 3; i++) if (x[i] !== y[i]) return x[i] - y[i];
+      return x[3] === y[3] ? 0 : x[3] < y[3] ? -1 : 1;
+    }
+    // a firmware RPC; an error reply ({code, message}) becomes a rejected promise. Network
+    // failures reject with a TypeError (fetch), which putCode tells apart.
+    function devRpc(method, params) {
+      return fetch("/rpc/" + method, { method: "POST", body: JSON.stringify(params || {}) })
+        .then(function (r) {
+          return r.json();
+        })
+        .then(function (j) {
+          if (j && j.code !== undefined && j.message !== undefined) throw new Error(j.message);
+          return j;
+        });
+    }
+    // what Script.PutCode accepts as-is: built scripts are ASCII (see AGENTS.md), and only tab
+    // and newline as control characters, so JSON.stringify adds no \u escapes (PutCode rejects
+    // them)
+    function okCode(code, head) {
+      if (code.indexOf(head) !== 0 || !/^[\t\n\x20-\x7e]*$/.test(code))
+        throw new Error(L.updBadFile);
+    }
+    // one channel's release: both files, checked; rejects on anything wrong
+    function getRelease(branch) {
+      function get(name) {
+        return fetch(LIB + branch + "/" + name, { cache: "no-store" }).then(function (r) {
+          if (!r.ok) throw new Error("HTTP " + r.status);
+          return r.text();
+        });
+      }
+      return Promise.all([get("shabbat_controller.js"), get("shabbat_ui.js")]).then(function (r) {
+        var v = stampVer(firstLine(r[0]));
+        okCode(r[0], "// Shabbat controller - ");
+        okCode(r[1], "// shabbat_ui - ");
+        if (!semver(v)) throw new Error(L.updBadFile);
+        // the CDN caches each file for up to 5 minutes: right after a release they may differ
+        if (stampVer(firstLine(r[1])) !== v) throw new Error(L.updMismatch);
+        return { v: v, ctrl: r[0], ui: r[1] };
+      });
+    }
+    function checkUpdate() {
+      S.upd = { busy: true, msg: L.updChecking };
+      render();
+      Promise.all([
+        getRelease("library"),
+        // beta: the newer of the two channels (a stable release can follow a beta). No beta
+        // published, or a broken one, still leaves the stable release
+        S.beta
+          ? getRelease("library-beta").catch(function () {
+              return null;
+            })
+          : null,
+        // the installed version is in the first line of the controller's code
+        devRpc("Script.GetCode", { id: ID, offset: 0, len: 120 })
+      ])
+        .then(function (r) {
+          var rel = r[1] && cmpVer(r[1].v, r[0].v) > 0 ? r[1] : r[0];
+          var ctrl = firstLine(r[2].data),
+            iv = stampVer(ctrl),
+            uv = stampVer(UI_STAMP);
+          rel.inst = verLabel(ctrl) || "?";
+          rel.state =
+            !semver(iv) || !semver(uv)
+              ? "dev"
+              : cmpVer(rel.v, iv) > 0 || cmpVer(rel.v, uv) > 0
+                ? "newer"
+                : "current";
+          S.upd = rel;
+          render();
+        })
+        .catch(function (e) {
+          S.upd = { err: tr(L.updCheckFailed, e.message) };
+          render();
+        });
+    }
+    // KVS.GetMany, not KVS.Get: a missing key is an empty result, not an HTTP 500 (and a
+    // console error) on every load. The docs show `items` both as a list and as an object.
+    function loadBeta() {
+      devRpc("KVS.GetMany", { match: BETA_KEY }).then(
+        function (j) {
+          var it = j.items || {},
+            v = it.length !== undefined ? it[0] : it[BETA_KEY];
+          S.beta = !!v && v.value === "1";
+          render();
+        },
+        function () {}
+      );
+    }
+    function setBeta(on) {
+      S.beta = on;
+      S.upd = null; // the last result was for the other channel
+      render();
+      devRpc("KVS.Set", { key: BETA_KEY, value: on ? "1" : "0" }).catch(function (e) {
+        S.err = e.message;
+        render();
+      });
+    }
+    // Upload in 1 KB pieces, like tools/deploy.py. A lost reply may or may not have applied its
+    // piece, so an append is never re-sent blindly: the upload resumes from the length the
+    // device reports. Then the code is read back and compared.
+    function putCode(id, code, label) {
+      var i = 0,
+        fails = 0;
+      function next() {
+        S.upd.msg = tr(label, Math.round((i * 100) / code.length));
+        render();
+        if (i >= code.length)
+          return readCode(id).then(function (c) {
+            if (c !== code) throw new Error(L.updVerify);
+          });
+        var piece = code.slice(i, i + 1024);
+        return devRpc("Script.PutCode", { id: id, code: piece, append: i > 0 }).then(
+          function () {
+            i += piece.length;
+            return next();
+          },
+          function (e) {
+            if (!(e instanceof TypeError) || ++fails > 5) throw e; // a device error: give up
+            if (i === 0) return next(); // the first piece replaces the code: safe to resend
+            return devRpc("Script.GetCode", { id: id, offset: 0, len: 1 }).then(function (j) {
+              var have = j.data.length + j.left;
+              i = have === i || have === i + piece.length ? have : 0;
+              return next();
+            });
+          }
+        );
+      }
+      return next();
+    }
+    // wait until the restarted controller answers (it says "starting" until its boot is done)
+    function waitCtrl(n) {
+      return devRpc("Script.ShabbatGet", { id: ID }).catch(function () {
+        if (n <= 0) return null; // reload anyway: the page shows what is wrong
+        return new Promise(function (ok) {
+          setTimeout(ok, 1000);
+        }).then(function () {
+          return waitCtrl(n - 1);
+        });
+      });
+    }
+    // Same order as tools/deploy.py: the page first (the controller keeps running), then the
+    // controller is stopped only for its own upload. Its old code is kept, and put back if
+    // anything fails after the stop.
+    function installUpdate() {
+      var U = S.upd,
+        backup = null,
+        stopped = false;
+      var ask = tr(L.updConfirm, U.v) + (S.st && S.st.cur ? "\n\n" + L.updInWindow : "");
+      if (!window.confirm(ask)) return;
+      U.busy = true;
+      U.err = "";
+      devRpc("Script.List")
+        .then(function (l) {
+          var ui = (l.scripts || []).filter(function (s) {
+            return (s.name || "").indexOf("shabbat_ui") === 0;
+          })[0];
+          if (!ui) throw new Error("script shabbat_ui not found");
+          return putCode(ui.id, U.ui, L.updUi);
+        })
+        .then(function () {
+          return readCode(ID);
+        })
+        .then(function (c) {
+          backup = c;
+          return devRpc("Script.Stop", { id: ID });
+        })
+        .then(function () {
+          stopped = true;
+          return putCode(ID, U.ctrl, L.updCtrl);
+        })
+        .then(function () {
+          U.msg = L.updRestart;
+          render();
+          return devRpc("Script.Start", { id: ID });
+        })
+        .then(function () {
+          stopped = false;
+          return waitCtrl(20);
+        })
+        .then(function () {
+          U.msg = L.updDone;
+          render();
+          setTimeout(function () {
+            location.reload();
+          }, 1000);
+        })
+        .catch(function (e) {
+          var msg = tr(L.updFailed, e.message);
+          function done(extra) {
+            S.upd = { err: msg + extra };
+            render();
+            refresh();
+          }
+          if (!stopped) return done("");
+          putCode(ID, backup, L.updCtrl)
+            .then(function () {
+              return devRpc("Script.Start", { id: ID });
+            })
+            .then(
+              function () {
+                return waitCtrl(20).then(function () {
+                  done(L.updRestored);
+                });
+              },
+              function () {
+                done(L.updStopped);
+              }
+            );
+        });
+    }
+    function viewUpdate() {
+      var U = S.upd || {};
+      var box = h("div", { cls: "card col" }, h("b", null, L.upd));
+      if (U.busy) {
+        add(box, h("span", { cls: "s", role: "status" }, U.msg));
+        return box;
+      }
+      if (U.err) add(box, h("div", { cls: "warn" }, U.err));
+      if (!U.state) add(box, h("span", { cls: "s" }, L.updHint));
+      else
+        add(
+          box,
+          h(
+            "span",
+            null,
+            U.state === "current"
+              ? tr(L.updCurrent, U.inst)
+              : U.state === "newer"
+                ? tr(L.updNewer, U.v, U.inst)
+                : tr(L.updDev, U.inst, U.v)
+          )
+        );
+      var btns = h("div", { cls: "line wrap" });
+      if (U.state === "newer" || U.state === "dev")
+        add(btns, h("button", { cls: "btn pri", onclick: installUpdate }, tr(L.updInstall, U.v)));
+      add(btns, h("button", { cls: "btn", onclick: checkUpdate }, L.updCheck));
+      if (U.v)
+        add(
+          btns,
+          h(
+            "a",
+            {
+              cls: "lnk",
+              href: "https://github.com/" + REPO + "/releases/tag/" + encodeURIComponent(U.v),
+              target: "_blank",
+              rel: "noopener"
+            },
+            L.updNotes
+          )
+        );
+      add(box, btns);
+      add(box, [
+        h("hr"),
+        h(
+          "div",
+          { cls: "row" },
+          h(
+            "div",
+            { cls: "col0" },
+            h("b", null, L.updBeta),
+            h("span", { cls: "s" }, L.updBetaHint)
+          ),
+          sw(!!S.beta, L.updBeta, function () {
+            setBeta(!S.beta);
+          })
+        )
+      ]);
+      return box;
+    }
     function loadTable() {
       if (S.tbl || S.tblLoading) return;
       S.tblLoading = true;
@@ -1481,11 +1829,14 @@ if (typeof document !== "undefined")
       .drow { padding: 4px 0; border-top: 1px solid #EEF1F5 }
       .dv { font-size: 13px; text-align: end; unicode-bidi: isolate; overflow-wrap: anywhere }
       .warn.col { display: flex; flex-direction: column; gap: 6px }
+      .wrap { flex-wrap: wrap }
+      .lnk { font-size: 14px; color: #1D4ED8; padding: 0 4px }
       button:focus-visible, input:focus-visible { outline: 2px solid #1D4ED8; outline-offset: 2px }
     `;
     document.head.appendChild(h("style", null, css));
     render();
     refresh();
     preview();
+    loadBeta();
     setInterval(refresh, 15000);
   })();

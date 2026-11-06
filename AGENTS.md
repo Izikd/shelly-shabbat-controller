@@ -15,18 +15,20 @@ is `docs/README.md`. Keeping these notes current is part of every change: see
   `tools/gen_table.py` regenerates the table with hdate, `tools/check_docs.mjs` checks the
   docs index, links and paths
 - `test/` simulator (`sim.js`), fallback decoder (`inflate_test.js`), Playwright test of the
-  page against a mock device (`ui_test.js` + `mockdevice.js`)
+  page against a mock device (`ui_test.js` + `mockdevice.js`, which also uploads and restarts
+  scripts for the update test; `stamp.js` re-stamps a build with a version)
 - `library/manifest.json` Shelly script library manifest; `build.mjs` checks it and copies it
   to `dist/`, the release workflow publishes it with the scripts to the `library` branch
+  (stable versions) or `library-beta` (pre-releases such as `v0.2.0-beta.1`)
 - `.github/workflows/` CI on push/PR, releases on `v*` tags or Run workflow (and the
-  `library` branch)
+  `library` / `library-beta` branch)
 
 ## Workflow
 - Commit directly to `main`; no pull requests (the owner's preference). Push when done.
 - Do not push other branches. Work on a local branch if you like, then push to `main` only.
   If a branch was pushed anyway (e.g. by a tool), delete it from the remote once it is
-  merged (`git push origin --delete <branch>`). The only long-lived branches are `main` and
-  `library` (written by the release workflow).
+  merged (`git push origin --delete <branch>`). The only long-lived branches are `main`,
+  `library` and `library-beta` (both written by the release workflow).
 - Before pushing: `npm run format` and `npm test` (builds, checks the docs' links and
   index, then all three test suites). CI runs the same checks plus `npm run check:table`.
 - Releases are prototypes: `v0.x.y` (first `v0.1.0`), no `v1.0.0` until the owner says so.
@@ -80,7 +82,8 @@ Each has a reason in `docs/device/` and `docs/experiments/`.
 - **Script memory is tight** (~25 KB pool shared by running scripts; peak ~16-20 KB).
   Do not keep large strings around (assemble per request); check `mem_peak` after a deploy.
 - **KVS keys `shabbat_elev_cfg` / `shabbat_elev_log` keep their names** (old project name):
-  renaming them loses users' timers and log.
+  renaming them loses users' timers and log. `shabbat_upd_beta` ("1" / "0") is the page's
+  beta-channel choice, written by the browser with the firmware's `KVS.Set`.
 - **`shabbat_ui` never runs on the device**; it only stores the page code. deploy.py keeps it
   stopped and disabled.
 - **Mocks must behave like the device** (`test/mockdevice.js`, `test/sim.js`): byte-range
@@ -112,13 +115,20 @@ messages, CI logs and workflow artifacts, can be read by anyone and is hard to t
   pass secrets to jobs that run on pull requests. New third-party actions only from known
   publishers, pinned to a version (better: a commit SHA).
 - **The `library` branch and release assets are installed on people's devices** (the
-  Scripts -> Library URL points at the branch, so a push there reaches every user on their
-  next install). Only `.github/workflows/release.yml` writes them, from a tested tag build;
-  never push to `library` or edit a release by hand, and never push a `v*` tag or run the
+  Scripts -> Library URL points at the branch, and the page's Check for updates installs from
+  it, so a push there reaches every user on their next install or update; `library-beta`
+  reaches the testers who switched "Beta versions" on). A version with a `-suffix` is a
+  pre-release: it goes only to `library-beta` and is marked pre-release on GitHub, so it
+  never reaches stable users. Only `.github/workflows/release.yml` writes them, from a tested tag build;
+  never push to `library` / `library-beta` or edit a release by hand, and never push a `v*` tag or run the
   Release workflow unless asked. Workflow inputs reach scripts only through `env`.
-- **No new runtime dependencies or network calls in the scripts** (the controller and the
-  page talk only to the device itself); a new devDependency must be pinned in
-  `package-lock.json`.
+- **No new runtime dependencies or network calls in the scripts**: the controller talks only
+  to the device, and the page too, with one exception chosen by the owner - the
+  **Check for updates** button, which reads the `library` (and with beta on, `library-beta`)
+  branch from
+  `raw.githubusercontent.com` only when pressed (never on load or on a timer; `ui_test.js`
+  checks that no GitHub request is made before the click). A new devDependency must be
+  pinned in `package-lock.json`.
 
 ## Working with a real device
 - `deploy.py` uploads only what changed (ignoring the build time), verifies by reading back,

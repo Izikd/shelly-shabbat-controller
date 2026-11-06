@@ -4,25 +4,39 @@
 //   GET  /rpc/Script.List        -> script 1 + "shabbat_ui" (id 2)
 //   GET  /rpc/Script.GetCode     -> dist/shabbat_ui.js in 2000-byte chunks
 //   POST /rpc/Script.Shabbat*    -> the script's RPC handlers
-// Usage: node test/mockdevice.js [port] [unix-time]
+//   Script.PutCode / Stop / Start / GetStatus, like the device: a running script's code cannot
+//   be replaced, and Start runs the uploaded code in a fresh VM (KVS kept)
+// Params come from the query string or a JSON body, as on the device.
+// Usage: node test/mockdevice.js [port] [unix-time] [version stamped into the controller]
 "use strict";
 const fs = require("fs"),
   path = require("path"),
   vm = require("vm"),
   http = require("http");
+const { restamp } = require("./stamp");
 const ROOT = path.join(__dirname, "..");
 if (!fs.existsSync(path.join(ROOT, "dist/shabbat_ui.js")))
   throw new Error("dist/ missing - run `npm run build` (or `npm test`)");
-const CODE = fs.readFileSync(path.join(ROOT, "dist/shabbat_controller.js"), "utf8");
-const UI = Buffer.from(fs.readFileSync(path.join(ROOT, "dist/shabbat_ui.js"), "utf8"), "utf8");
+let CODE = fs.readFileSync(path.join(ROOT, "dist/shabbat_controller.js"), "utf8");
+// pretend an installed release, e.g. v0.1.0 (the update test)
+let UI = fs.readFileSync(path.join(ROOT, "dist/shabbat_ui.js"), "utf8");
+if (process.argv[4]) {
+  CODE = restamp(CODE, process.argv[4]);
+  UI = restamp(UI, process.argv[4]);
+}
 const port = +process.argv[2] || 8099;
 let now = +process.argv[3] || Math.floor(Date.now() / 1000);
 const dev = { relay: false, kvs: {}, rpc: {}, endpoints: {}, pending: [], timers: [] };
+// stored script code (bytes) and state; script 1 is the controller
+const scripts = {
+  1: { name: "shabbat_controller", code: Buffer.from(CODE, "utf8"), running: true, enable: true },
+  2: { name: "shabbat_ui", code: Buffer.from(UI, "utf8"), running: false, enable: false }
+};
 const flush = () => {
   let n = 0;
   while (dev.pending.length && n++ < 5000) dev.pending.shift()();
 };
-const sb = {
+const makeSandbox = () => ({
   console: { log: (...a) => console.log("[script]", ...a) },
   Shelly: {
     getComponentStatus(t) {
@@ -75,11 +89,24 @@ const sb = {
       dev.endpoints[n] = cb;
     }
   }
-};
-vm.createContext(sb);
-vm.runInContext("delete Array.prototype.sort;", sb);
-vm.runInContext(CODE, sb);
-flush();
+});
+// (re)start the controller: a fresh VM, like Script.Start on the device
+function startController() {
+  Object.assign(dev, { rpc: {}, endpoints: {}, pending: [], timers: [] });
+  const sb = makeSandbox();
+  vm.createContext(sb);
+  vm.runInContext("delete Array.prototype.sort;", sb);
+  try {
+    vm.runInContext(scripts[1].code.toString("utf8"), sb);
+  } catch (e) {
+    console.log("[mock] controller failed to start:", e.message);
+    return false;
+  }
+  scripts[1].running = true;
+  flush();
+  return true;
+}
+startController();
 setInterval(() => {
   now += 15;
   dev.timers.forEach((f) => f());
@@ -96,7 +123,13 @@ http
     let body = "";
     req.on("data", (c) => (body += c));
     req.on("end", () => {
+      // RPC params: query string or JSON body (both work on the device)
+      let params = Object.fromEntries(u.searchParams);
+      try {
+        if (body) params = Object.assign(params, JSON.parse(body));
+      } catch (e) {}
       if (u.pathname === "/script/1/ui") {
+        if (!scripts[1].running || !dev.endpoints.ui) return json(res, 404, { code: 404 });
         let out;
         dev.endpoints.ui(
           { method: "GET" },
@@ -124,8 +157,8 @@ http
         });
       if (u.pathname === "/rpc/Script.GetStatus")
         return json(res, 200, {
-          id: 1,
-          running: true,
+          id: +params.id,
+          running: !!(scripts[params.id] && scripts[params.id].running),
           mem_used: 15890,
           mem_peak: 21800,
           mem_free: 8400
@@ -144,20 +177,68 @@ http
         dev.tag = null;
         return json(res, 200, { was_on: !dev.relay });
       }
+      // firmware KVS, shared with the script (the page keeps its beta choice there)
+      if (u.pathname === "/rpc/KVS.Get")
+        return params.key in dev.kvs
+          ? json(res, 200, { value: dev.kvs[params.key] })
+          : json(res, 500, { code: -105, message: "Argument 'key', value not found!" });
+      if (u.pathname === "/rpc/KVS.GetMany") {
+        // the list form of the docs' example; `match` taken literally (no wildcards here)
+        const keys = Object.keys(dev.kvs).filter((k) => !params.match || k === params.match);
+        return json(res, 200, {
+          items: keys.map((k) => ({ key: k, etag: "x", value: dev.kvs[k] })),
+          offset: 0,
+          total: keys.length
+        });
+      }
+      if (u.pathname === "/rpc/KVS.Set") {
+        dev.kvs[params.key] = String(params.value);
+        return json(res, 200, {});
+      }
       if (u.pathname === "/rpc/Script.List")
         return json(res, 200, {
-          scripts: [
-            { id: 1, name: "shabbat_controller", enable: true, running: true },
-            { id: 2, name: "shabbat_ui", enable: false, running: false }
-          ]
+          scripts: Object.keys(scripts).map((id) => ({
+            id: +id,
+            name: scripts[id].name,
+            enable: scripts[id].enable,
+            running: scripts[id].running
+          }))
         });
+      const sc = scripts[params.id];
+      if (/^\/rpc\/Script\.(GetCode|PutCode|Stop|Start)$/.test(u.pathname) && !sc)
+        return json(res, 500, {
+          code: -105,
+          message: "Argument 'id', value " + params.id + " not found!"
+        });
+      if (u.pathname === "/rpc/Script.PutCode") {
+        // the code of a running script cannot be replaced (Shelly docs)
+        if (sc.running) return json(res, 500, { code: -103, message: "Script is running" });
+        if (typeof params.code !== "string")
+          return json(res, 500, { code: -103, message: "Missing or bad argument 'code'!" });
+        const piece = Buffer.from(params.code, "utf8");
+        sc.code = params.append ? Buffer.concat([sc.code, piece]) : piece;
+        return json(res, 200, { len: sc.code.length });
+      }
+      if (u.pathname === "/rpc/Script.Stop") {
+        const was = sc.running;
+        sc.running = false;
+        if (+params.id === 1)
+          Object.assign(dev, { rpc: {}, endpoints: {}, pending: [], timers: [] });
+        return json(res, 200, { was_running: was });
+      }
+      if (u.pathname === "/rpc/Script.Start") {
+        if (+params.id !== 1) return json(res, 500, { code: -103, message: "not in the mock" });
+        if (sc.running) return json(res, 200, { was_running: true });
+        if (!startController()) return json(res, 500, { code: -103, message: "script error" });
+        return json(res, 200, { was_running: false });
+      }
       if (u.pathname === "/rpc/Script.GetCode") {
-        const src = u.searchParams.get("id") === "1" ? Buffer.from(CODE, "utf8") : UI;
+        const src = sc.code;
         // like the device: byte ranges, a UTF-8 character split across ranges comes back as
         // U+FFFD. Large reads rebooted a real Pro 1, so refuse any read without a small len.
-        const len = +u.searchParams.get("len");
+        const len = +params.len;
         if (!len || len > 8192) return json(res, 400, { code: -103, message: "read too large" });
-        let off = +u.searchParams.get("offset") || 0,
+        let off = +params.offset || 0,
           end = Math.min(src.length, off + len);
         if (off > src.length)
           return json(res, 200, {
@@ -168,11 +249,7 @@ http
         return json(res, 200, { data: chunk.toString("utf8"), left: src.length - end });
       }
       const m = u.pathname.match(/^\/rpc\/Script\.(Shabbat\w+)$/);
-      if (m && dev.rpc[m[1]]) {
-        let params = {};
-        try {
-          params = body ? JSON.parse(body) : {};
-        } catch (e) {}
+      if (m && scripts[1].running && dev.rpc[m[1]]) {
         dev.rpc[m[1]](
           {
             result(d) {

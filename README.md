@@ -53,6 +53,23 @@ above (the settings page script's name must start with `shabbat_ui`). The `libra
 written by the release workflow and holds the latest release's build next to `manifest.json`
 (source: `library/manifest.json`, checked and copied to `dist/` by `npm run build`). It works
 only while the repository is public: the browser fetches the files from GitHub without a token.
+Beta testers can use `.../library-beta/manifest.json` instead: that branch holds the latest
+pre-release (`v0.2.0-beta.1` and the like), which never reaches the stable `library` branch.
+
+### Upgrading from the settings page
+Status tab -> **Software update** -> **Check for updates**. Only then does the browser ask
+GitHub (the `library` branch above, on `raw.githubusercontent.com`) for the latest release;
+the page never contacts anything but the device on its own, and the device needs no
+internet. **Beta versions** (a switch in the same card, kept on the device, so every
+browser opening it sees the same choice) also offers pre-releases from the `library-beta`
+branch; the newer of the stable and the beta release is offered, so testers get stable
+releases too. If a newer version is available, **Install** uploads both scripts the way
+`deploy.py` does: the settings page first, then the controller is stopped, uploaded, verified
+by reading it back and started again (a few seconds without relay control; timers, settings
+and the log are kept). If anything fails after the stop, the previous controller code is put
+back and started. A development build is offered the latest release too. Avoid installing
+during an active Shabbat / Yom Tov window on a device that drives something real (the page
+warns).
 
 ### Upgrading from a computer
 `tools/deploy.py` uploads the scripts to the device over its RPC API (Python, no
@@ -140,7 +157,10 @@ updates the `library` branch). Start it either way:
 git tag v0.1.0
 git push origin v0.1.0
 ```
-Versions are `v0.x.y` while the project is a prototype.
+Versions are `v0.x.y` while the project is a prototype. A version with a suffix
+(`v0.2.0-beta.1`, `v0.2.0-rc.1`) is a beta: it is marked as a pre-release on GitHub (so
+`deploy.py --release latest` skips it) and published only to the `library-beta` branch, for
+testers. A version without a suffix updates the stable `library` branch.
 Releases are optional: local builds, tests and `deploy.py` work without any tag or release.
 
 Every build stamps its first line with the release, the commit and the build time (ISO 8601,
@@ -168,7 +188,9 @@ the build time when comparing, so rebuilding the same commit does not re-upload.
 - `.github/workflows/` CI (format, build, tests, table check) and releases
 - `test/inflate_test.js` the fallback decoder against Node's zlib
 - `test/sim.js` device simulator (minute-by-minute relay sweep vs an independent reference)
-- `test/mockdevice.js` + `test/ui_test.js` fake Shelly + Playwright browser test of the page
+- `test/mockdevice.js` + `test/ui_test.js` fake Shelly + Playwright browser test of the page,
+  including an update from a fake `library` branch (`test/stamp.js` re-stamps builds with a
+  version)
 
 ## More documentation
 - `AGENTS.md` - how to work on the project (for AI agents and humans): workflow, commands,

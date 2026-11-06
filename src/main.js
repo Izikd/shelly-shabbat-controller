@@ -562,7 +562,8 @@ let UI_A =
 // assembled per request: keeping the assembled copy too cost ~1.4 KB of script memory.
 // To shorten the chain of round trips through a slow link, the loader starts the status
 // request (window.SE_FIRST, used by the page's first refresh) together with the code, and
-// reads the first 5 pieces (20 KB, the whole page) in one parallel round; reads past the end
+// reads the first 5 pieces (20 KB) in one parallel round, the rest (if any) in a second round;
+// reads past the end
 // return no data. With no known id, or code that is not shabbat_ui, it looks the id up.
 let UI_B =
   ";(async function(){try{let id=window.SE_ID,ui=window.SE_UI;" +

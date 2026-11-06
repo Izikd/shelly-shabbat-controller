@@ -1,21 +1,37 @@
 // Browser test of the settings UI against test/mockdevice.js (Playwright + Chromium).
 // Usage: node test/ui_test.js <outdir>
 "use strict";
-let srvRef = null;
+let srvRef = null,
+  srv2Ref = null;
 const { chromium } = require("playwright");
 const { spawn } = require("child_process");
 const path = require("path");
+const fs = require("fs");
+const { restamp } = require("./stamp");
 const out = process.argv[2] || ".";
 const PORT = 8099;
+const PORT2 = 8098; // a second mock device, for the update test
+const LIB = "https://raw.githubusercontent.com/Izikd/shelly-shabbat-controller/";
 const NOW = 1793731800; // Tue 03/11/2026 20:50 Israel
+
+// resolves once the mock prints that it listens (the controller logs to stdout before that)
+const listening = (proc) =>
+  new Promise((ok) => {
+    let buf = "";
+    proc.stdout.on("data", (d) => {
+      buf += d;
+      if (buf.includes("mock Shelly on")) ok();
+    });
+  });
 
 (async () => {
   const srv = (srvRef = spawn(
     "node",
-    [path.join(__dirname, "mockdevice.js"), String(PORT), String(NOW)],
+    // stamped "dev": the update test expects a development build here, whatever the checkout
+    [path.join(__dirname, "mockdevice.js"), String(PORT), String(NOW), "dev"],
     { stdio: ["ignore", "pipe", "inherit"] }
   ));
-  await new Promise((r) => srv.stdout.once("data", r));
+  await listening(srv);
   const browser = await chromium.launch();
   const page = await browser.newPage({
     viewport: { width: 390, height: 844 },
@@ -249,6 +265,150 @@ const NOW = 1793731800; // Tue 03/11/2026 20:50 Israel
   await old.click("role=tab[name='Timers']");
   await old.waitForSelector("text=After candle lighting");
 
+  // ---------- software update (Check for updates -> install) ----------
+  // The `library` branch on raw.githubusercontent.com is served by the test; a second mock
+  // device pretends to run release v0.1.0.
+  const lib = {}; // "<branch>/<file>" -> code
+  const dist = (n) => fs.readFileSync(path.join(__dirname, "..", "dist", n), "utf8");
+  const setLib = (ctrl, ui, branch) => {
+    lib[(branch || "library") + "/shabbat_controller.js"] = ctrl;
+    lib[(branch || "library") + "/shabbat_ui.js"] = ui;
+  };
+  setLib(
+    restamp(dist("shabbat_controller.js"), "v0.2.0"),
+    restamp(dist("shabbat_ui.js"), "v0.2.0")
+  );
+  const ctx = await browser.newContext({ locale: "en-US", timezoneId: "Europe/London" });
+  let ghRequests = 0;
+  ctx.on("request", (r) => {
+    if (/github/.test(r.url())) ghRequests++;
+  });
+  await ctx.route("https://raw.githubusercontent.com/**", (route) => {
+    const url = route.request().url();
+    const name = url.slice(LIB.length);
+    if (!url.startsWith(LIB) || !lib[name]) return route.fulfill({ status: 404, body: "404" });
+    route.fulfill({
+      status: 200,
+      contentType: "text/plain; charset=utf-8",
+      headers: { "access-control-allow-origin": "*" },
+      body: lib[name]
+    });
+  });
+  const up = await ctx.newPage();
+  up.setDefaultTimeout(8000);
+  up.on("pageerror", (e) => errors.push("upd: " + e.message));
+
+  // a development build (the first mock): offered, but called a development build
+  await up.goto(`http://localhost:${PORT}/script/1/ui`);
+  await up.waitForSelector("text=Next relay ON");
+  check(ghRequests === 0, "no request to GitHub before the button is pressed: " + ghRequests);
+  await up.click("text=Check for updates");
+  await up.waitForSelector("text=Development build");
+  check(await up.isVisible("text=Install v0.2.0"), "dev build: install button offered");
+
+  const srv2 = (srv2Ref = spawn(
+    "node",
+    [path.join(__dirname, "mockdevice.js"), String(PORT2), String(NOW), "v0.1.0"],
+    { stdio: ["ignore", "pipe", "inherit"] }
+  ));
+  await listening(srv2);
+  const api2 = (method, params) =>
+    up.evaluate(
+      async ([m, p]) =>
+        (await fetch("/rpc/" + m, { method: "POST", body: JSON.stringify(p || {}) })).json(),
+      [method, params]
+    );
+  const ctrlFirst = async () =>
+    (await api2("Script.GetCode", { id: 1, offset: 0, len: 120 })).data.split("\n")[0];
+  await up.goto(`http://localhost:${PORT2}/script/1/ui`);
+  await up.waitForSelector("text=Next relay ON");
+  const before = await api2("Script.ShabbatSet", { id: 1, timers: [[1, 600, 45, 0, 0, 1]] });
+
+  // the CDN can briefly hold files of two versions: refuse
+  setLib(lib["library/shabbat_controller.js"], restamp(dist("shabbat_ui.js"), "v0.1.9"));
+  await up.click("text=Check for updates");
+  await up.waitForSelector("text=try again in a few minutes");
+  check(!(await up.isVisible("text=Install v0.2.0")), "no install offered on mismatched files");
+
+  // a controller that does not start: the old code is put back and started
+  setLib(
+    "// Shabbat controller - version v0.2.0 - commit 0000000 - built 2026-11-06T00:00Z\n}{\n",
+    restamp(dist("shabbat_ui.js"), "v0.2.0")
+  );
+  await up.click("text=Check for updates");
+  await up.waitForSelector("text=Version v0.2.0 is available");
+  check(/installed: v0\.1\.0 · /.test(await up.textContent("main")), "installed version shown");
+  await up.screenshot({ path: path.join(out, "upd-1-available.png"), fullPage: true });
+  up.once("dialog", (d) => d.accept());
+  await up.click("text=Install v0.2.0");
+  await up.waitForSelector("text=previous version was restored", { timeout: 30000 });
+  check(/version v0\.1\.0 /.test(await ctrlFirst()), "controller code restored to v0.1.0");
+  check((await api2("Script.GetStatus", { id: 1 })).running, "restored controller running");
+
+  // a good release: installed, verified, restarted, page reloaded
+  setLib(
+    restamp(dist("shabbat_controller.js"), "v0.2.0"),
+    restamp(dist("shabbat_ui.js"), "v0.2.0")
+  );
+  await up.click("text=Check for updates");
+  await up.waitForSelector("text=Version v0.2.0 is available");
+  let confirmText = "";
+  up.once("dialog", (d) => {
+    confirmText = d.message();
+    d.accept();
+  });
+  await up.click("text=Install v0.2.0");
+  check(/restarts for a few seconds/.test(confirmText), "confirmation asked: " + confirmText);
+  await up.waitForSelector("text=Update installed", { timeout: 30000 });
+  await up.waitForSelector("text=Next relay ON", { timeout: 15000 }); // reloaded
+  check(/version v0\.2\.0 /.test(await ctrlFirst()), "controller is v0.2.0");
+  check(
+    (await api2("Script.GetCode", { id: 2, offset: 0, len: 120 })).data.indexOf(
+      "// shabbat_ui - version v0.2.0 "
+    ) === 0,
+    "settings page is v0.2.0"
+  );
+  const after = await api2("Script.ShabbatGet", { id: 1 });
+  check(
+    JSON.stringify(after.cfg.timers) === JSON.stringify(before.cfg.timers),
+    "timers kept across the update"
+  );
+  await up.click("text=Check for updates");
+  await up.waitForSelector("text=The latest version is installed (v0.2.0");
+  await up.screenshot({ path: path.join(out, "upd-2-current.png"), fullPage: true });
+
+  // beta channel: a pre-release on library-beta is offered only with the switch on; the
+  // choice is kept on the device; with beta on, a newer stable release still wins
+  setLib(
+    restamp(dist("shabbat_controller.js"), "v0.3.0-beta.1"),
+    restamp(dist("shabbat_ui.js"), "v0.3.0-beta.1"),
+    "library-beta"
+  );
+  await up.click("text=Check for updates");
+  await up.waitForSelector("text=The latest version is installed (v0.2.0");
+  check(!(await up.isVisible("text=Install v0.3.0-beta.1")), "beta not offered with beta off");
+  await up.click("button[aria-label='Beta versions']");
+  await up.waitForSelector("button[aria-label='Beta versions'][aria-pressed='true']");
+  await up.waitForTimeout(300);
+  check(
+    (await api2("KVS.Get", { key: "shabbat_upd_beta" })).value === "1",
+    "beta choice saved on the device"
+  );
+  await up.reload();
+  await up.waitForSelector("button[aria-label='Beta versions'][aria-pressed='true']");
+  await up.click("text=Check for updates");
+  await up.waitForSelector("text=Version v0.3.0-beta.1 is available");
+  await up.screenshot({ path: path.join(out, "upd-3-beta.png"), fullPage: true });
+  setLib(
+    restamp(dist("shabbat_controller.js"), "v0.3.0"),
+    restamp(dist("shabbat_ui.js"), "v0.3.0")
+  );
+  await up.click("text=Check for updates");
+  await up.waitForSelector("text=Version v0.3.0 is available");
+  await up.click("button[aria-label='Beta versions']"); // back to stable only
+  await up.waitForSelector("button[aria-label='Beta versions'][aria-pressed='false']");
+  srv2.kill();
+
   check(errors.length === 0, "page errors: " + errors.join(" | "));
   console.log(fails ? fails + " UI FAILURE(S)" : "UI TESTS PASSED");
   await browser.close();
@@ -262,5 +422,6 @@ const NOW = 1793731800; // Tue 03/11/2026 20:50 Israel
   .finally(() => {
     try {
       srvRef && srvRef.kill();
+      srv2Ref && srv2Ref.kill();
     } catch (x) {}
   });

@@ -11,5 +11,12 @@ the device) or *design* (a rule we chose). Recheck on new firmware or other mode
   until then.
 - KVS values are limited (~253 chars per value in practice); the timer config and the 15-entry
   log are sized to fit (`test/sim.js` checks).
+- The page keeps its beta-channel choice in KVS key `shabbat_upd_beta`, written by the
+  browser with `KVS.Set` (no script memory). It reads it with `KVS.GetMany {match}`, not
+  `KVS.Get`, because `KVS.Get` of a missing key is an RPC error (HTTP 500, which the browser
+  logs as an error on every load) (*design*; the 500 is what the mock answers, not checked
+  on hardware). The docs show `GetMany`'s `items` both as an object keyed by name and as a
+  list of `{key, etag, value}`; the page accepts both, the mock answers the list (*doc*).
+- KVS limits: keys up to 42 characters, values up to 253, at most 50 keys (*doc*).
 - `Sys.GetStatus`: `ram_size`, `ram_free`, `ram_min_free` (lowest since boot, reset only by a
   reboot), `fs_size`, `fs_free`, `uptime`, `reset_reason` (4 seen after a crash).
