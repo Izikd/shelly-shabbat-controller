@@ -48,8 +48,14 @@ const NOW = 1793731800; // Tue 03/11/2026 20:50 Israel
       [method, params || {}]
     );
 
+  const listCalls = [];
+  page.on("request", (r) => r.url().includes("Script.List") && listCalls.push(r.url()));
   await page.goto(`http://localhost:${PORT}/script/1/ui`);
   await page.waitForSelector("text=הפעלה הבאה של הממסר");
+  check(
+    listCalls.length === 0,
+    "loader used the page script id from the controller (no Script.List)"
+  );
   const statusTxt = await page.textContent("main");
   check(
     /שבת/.test(statusTxt) && /ו׳ 06\/11 16:30/.test(statusTxt),

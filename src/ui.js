@@ -394,6 +394,20 @@ if (typeof document !== "undefined")
       }, 250);
     }
     function refresh() {
+      // the first status was already requested by the loader, in parallel with this code
+      var first = window.SE_FIRST;
+      if (first) {
+        window.SE_FIRST = null;
+        first
+          .then(function (j) {
+            if (j && j.cfg) {
+              S.err = "";
+              load(j);
+            } else refresh();
+          })
+          .catch(refresh);
+        return;
+      }
       rpc("ShabbatGet", {}, load);
     }
 

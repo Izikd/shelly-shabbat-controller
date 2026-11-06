@@ -41,6 +41,13 @@ const sb = {
         if (p.key in dev.kvs) res = { value: dev.kvs[p.key] };
         else err = -105;
       } else if (m === "KVS.Set") dev.kvs[p.key] = p.value;
+      else if (m === "Script.List")
+        res = {
+          scripts: [
+            { id: 1, name: "shabbat_controller" },
+            { id: 2, name: "shabbat_ui" }
+          ]
+        };
       else if (m === "Switch.Set") {
         dev.relay = p.on;
         dev.src = "loopback";
@@ -152,6 +159,11 @@ http
         if (!len || len > 8192) return json(res, 400, { code: -103, message: "read too large" });
         let off = +u.searchParams.get("offset") || 0,
           end = Math.min(src.length, off + len);
+        if (off > src.length)
+          return json(res, 200, {
+            code: -103,
+            message: "Invalid argument 'offset': Exceeds file size!"
+          });
         const chunk = src.subarray(off, end);
         return json(res, 200, { data: chunk.toString("utf8"), left: src.length - end });
       }

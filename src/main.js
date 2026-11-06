@@ -556,19 +556,40 @@ let UI_A =
   '<!doctype html><html><head><meta charset="utf-8">' +
   '<meta name="viewport" content="width=device-width,initial-scale=1"><title>Shabbat</title></head>' +
   '<body style="font-family:system-ui,sans-serif"><div id="app">...</div><script>window.SE_ID=';
+// UI_HTML = UI_A + <this script id> + ";window.SE_UI=" + <shabbat_ui id, -1 if unknown> + UI_B.
+// To shorten the chain of round trips through a slow link, the loader starts the status
+// request (window.SE_FIRST, used by the page's first refresh) together with the code, and
+// reads the first 5 pieces (20 KB, the whole page) in one parallel round; reads past the end
+// return no data. With no known id, or code that is not shabbat_ui, it looks the id up.
 let UI_B =
-  ";(async function(){try{" +
-  'let l=await (await fetch("/rpc/Script.List")).json();' +
-  'let u=l.scripts.find(function(s){return s.name==="shabbat_ui"});' +
-  'if(!u)throw new Error("script shabbat_ui not found");' +
-  'let g=function(o){return fetch("/rpc/Script.GetCode?id="+u.id+"&len=4096&offset="+o).then(function(r){return r.json()})};' +
-  "let f=await g(0),n=f.data.length+f.left,c=f.data,o=c.length;" +
-  "while(o<n){let b=[];for(let i=0;i<4&&o<n;i++,o+=4096)b.push(g(o));" +
-  "for(let r of await Promise.all(b))c+=r.data;}" +
-  'if(c.length!==n)throw new Error("incomplete code");' +
+  ";(async function(){try{let id=window.SE_ID,ui=window.SE_UI;" +
+  'window.SE_FIRST=fetch("/rpc/Script.ShabbatGet",{method:"POST",body:JSON.stringify({id:id})}).then(function(r){return r.json()});' +
+  'let g=function(u,o){return fetch("/rpc/Script.GetCode?id="+u+"&len=4096&offset="+o).then(function(r){return r.json()})};' +
+  "let R=async function(u){let p=[];for(let i=0;i<5;i++)p.push(g(u,i*4096));let r=await Promise.all(p);" +
+  'if(!r[0].data||r[0].data.indexOf("// shabbat_ui")!==0)return null;' +
+  'let n=r[0].data.length+r[0].left,c="";for(let x of r)c+=x.data||"";' +
+  "let o=c.length;while(o<n){let b=[];for(let i=0;i<4&&o<n;i++,o+=4096)b.push(g(u,o));for(let x of await Promise.all(b))c+=x.data;}" +
+  'if(c.length!==n)throw new Error("incomplete code");return c};' +
+  "let c=ui>=0?await R(ui):null;" +
+  'if(!c){let l=await (await fetch("/rpc/Script.List")).json(),u=l.scripts.find(function(s){return s.name==="shabbat_ui"});' +
+  'if(!u)throw new Error("script shabbat_ui not found");c=await R(u.id);if(!c)throw new Error("shabbat_ui unreadable");}' +
   'new Function(c)();}catch(e){document.getElementById("app").textContent="UI load failed: "+e.message;}})();' +
   "</script></body></html>";
 let UI_HTML = "";
+let uiId = -1;
+
+function setUiHtml() {
+  UI_HTML = UI_A + Shelly.getCurrentScriptId() + ";window.SE_UI=" + uiId + UI_B;
+}
+// looked up once at boot; the loader falls back to Script.List if it is wrong
+function onUiList(res, err) {
+  if (!err && res && res.scripts) {
+    for (let i = 0; i < res.scripts.length; i++) {
+      if (res.scripts[i].name === "shabbat_ui") uiId = res.scripts[i].id;
+    }
+  }
+  setUiHtml();
+}
 
 function onUi(req, res) {
   res.code = 200;
@@ -603,8 +624,8 @@ let BOOT = [
     }
   },
   function () {
-    let id = Shelly.getCurrentScriptId();
-    UI_HTML = UI_A + id + UI_B;
+    setUiHtml();
+    Shelly.call("Script.List", {}, onUiList);
     HTTPServer.registerEndpoint("ui", onUi);
     Script.addRpcHandler("ShabbatGet", onRpcGet);
     Script.addRpcHandler("ShabbatSet", onRpcSet);

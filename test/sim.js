@@ -80,6 +80,13 @@ function makeDevice(opts) {
           dev.toggleAfter = params.toggle_after;
           dev.relaySets++;
           res = {};
+        } else if (method === "Script.List") {
+          res = {
+            scripts: [
+              { id: 1, name: "shabbat_controller" },
+              { id: 2, name: "shabbat_ui" }
+            ]
+          };
         } else if (method === "Virtual.Delete") {
           if (dev.vcs[params.key]) {
             delete dev.vcs[params.key];
@@ -578,6 +585,7 @@ if (!process.env.QUICK) {
     r.code === 200 && /window\.SE_ID=1;/.test(r.body) && /shabbat_ui/.test(r.body),
     "ui loader page"
   );
+  check(/window\.SE_UI=2;/.test(r.body), "page script id looked up at boot (SE_UI=2)");
   console.log("T5 UI loader:", r.body.length, "bytes");
 }
 
