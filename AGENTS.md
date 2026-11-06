@@ -52,7 +52,7 @@ A change is not finished until the notes match it. In the same commit:
 ```
 npm install                     # once
 npm run format                  # prettier on src/ test/ tools/
-npm test                        # build + docs check + inflate_test + sim + ui_test
+npm test                        # build + docs check + inflate_test + sim (+ flags on) + ui_test
 npm run check:docs              # docs index complete, links and paths resolve
 npm run build                   # dist/ only
 uv run tools/deploy.py <host> --build   # build and install on a device
@@ -131,3 +131,7 @@ messages, CI logs and workflow artifacts, can be read by anyone and is hard to t
   by `Shelly.Reboot`), `Script.GetStatus?id=<n>` (`mem_used`, `mem_peak`, `errors`),
   `Script.ShabbatGet` (controller state), `Shelly.GetDeviceInfo`.
 - Some reverse proxies block Python's default user agent; deploy.py sends its own.
+- **Debugging the controller**: `Script.Eval {id, code: "CFG.debug=true"}` switches the
+  per-tick debug log on in the running script (until restart). For a crash during boot, set
+  `diag: true` in `src/main.js` and deploy a local build; do not commit it. Both flags stay
+  in every build, off; `npm test` runs the simulator once with them on (`FLAGS=1`).

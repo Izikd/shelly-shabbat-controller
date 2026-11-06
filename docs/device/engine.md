@@ -18,5 +18,10 @@ the device) or *design* (a rule we chose). Recheck on new firmware or other mode
   5 HTTP endpoints, 5 RPC handlers (*doc*).
 - **Up to 3 scripts run at once**; the JS memory pool (~25 KB on the Pro 1) is shared by the
   running scripts: `mem_free` in `Script.GetStatus` is the pool's free part (*doc*, *measured*).
+- **`Script.Eval` reads and sets globals of a running script** (*observed*): `CFG.debug=true`
+  switches the controller's debug log on without a restart or a special build; it lasts until
+  the script restarts. This replaced a separate "diag" build (Nov 2026). For a crash during
+  boot, set `diag: true` in `src/main.js` (1 s between boot steps, memory logged after each)
+  and deploy a local build.
 - **A script that crashes the device is disabled at the next boot** (*doc*). Nothing in this
   project restarts it yet; watch for it after risky changes.

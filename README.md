@@ -69,8 +69,14 @@ is used if present. It prints the version on the device and the one being instal
 It finds the controller (name starting `shabbat_controller`, or the old `shabbat_elevator`,
 which it renames) and `shabbat_ui` scripts, creating them if missing, uploads only scripts whose code differs, verifies each upload by reading it back,
 restarts the controller, keeps `shabbat_ui` stopped, and prints memory use and the next window.
-Re-running is harmless. Options: `--password` (or `SHELLY_PASSWORD`), `--diag` (install the
-diagnostic build), `--no-ui`, `--restart`.
+Re-running is harmless. Options: `--password` (or `SHELLY_PASSWORD`), `--no-ui`, `--restart`.
+
+Debug logging (one line per tick on the device's debug console) can be switched on in the
+running controller, until its next restart:
+```
+curl -d '{"id":1,"method":"Script.Eval","params":{"id":1,"code":"CFG.debug=true"}}' http://<shelly-ip>/rpc
+```
+(`id` is the controller's script id.)
 
 The controller deletes any virtual components left on the device by older versions.
 
@@ -149,8 +155,8 @@ the build time when comparing, so rebuilding the same commit does not re-upload.
   `npm run build`. The Python tools declare their dependencies in a PEP 723 header, so uv
   installs hdate on the fly; without uv, `pip install hdate==1.2.2` and run them with
   `python3`. hdate is pinned: a new version may move times, so bump it on purpose
-- `tools/build.mjs` (`npm run build`) -> `dist/shabbat_controller.js`, `dist/shabbat_controller_diag.js`,
-  `dist/shabbat_ui.js`. Minifies with terser: the page fully; the controller only by renaming
+- `tools/build.mjs` (`npm run build`) -> `dist/shabbat_controller.js` and `dist/shabbat_ui.js`
+  (it empties `dist/` first). Minifies with terser: the page fully; the controller only by renaming
   local variables and dropping whitespace (no code restructuring, which could break the engine
   limits below). Top-level names are kept for `test/sim.js`
 - `tools/deploy.py` uploads a build or a release to a device (see "Upgrading from a computer")

@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 // Build the installable scripts from the readable sources:
 //   dist/shabbat_controller.js       controller (src/main.js + src/table.js), minified
-//   dist/shabbat_controller_diag.js  same with debug logging + staged boot memory logs
 //   dist/shabbat_ui.js               settings page (src/ui.js), minified
 //   dist/manifest.json               script library manifest (library/manifest.json, checked)
 //
@@ -23,7 +22,7 @@
 //
 // Usage: npm run build   (after npm install)
 
-import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync, rmSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execSync } from "node:child_process";
@@ -128,16 +127,8 @@ const table = read("src/table.js").trim();
 if (!main.includes("//@@TABLE@@")) throw new Error("src/main.js: //@@TABLE@@ marker missing");
 const full = main.replace("//@@TABLE@@", () => table);
 
-const diag = full
-  .replace(/^(\s*)debug: false,/m, "$1debug: true,")
-  .replace(/^(\s*)diag: false/m, "$1diag: true");
-if (!/^\s*diag: true/m.test(diag) || !/^\s*debug: true,/m.test(diag)) {
-  throw new Error("src/main.js: CFG.debug / CFG.diag flags not found for the diag build");
-}
-
 const outputs = {
   "shabbat_controller.js": await controller(full),
-  "shabbat_controller_diag.js": await controller(diag),
   "shabbat_ui.js": await ui(read("src/ui.js"))
 };
 
@@ -149,6 +140,7 @@ for (const [name, code] of Object.entries(outputs)) {
   }
 }
 
+rmSync(join(ROOT, "dist"), { recursive: true, force: true }); // no stale outputs to upload
 mkdirSync(join(ROOT, "dist"), { recursive: true });
 for (const [name, code] of Object.entries(outputs)) {
   const dst = join(ROOT, "dist", name);

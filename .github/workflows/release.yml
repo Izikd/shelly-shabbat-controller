@@ -32,14 +32,13 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: >
           gh release create "$VERSION" --verify-tag --title "$VERSION" --generate-notes
-          dist/shabbat_controller.js dist/shabbat_ui.js dist/shabbat_controller_diag.js dist/manifest.json
+          dist/shabbat_controller.js dist/shabbat_ui.js dist/manifest.json
       # The Shelly script library (Scripts -> Library -> Configure URL) reads
       # https://raw.githubusercontent.com/<repo>/library/manifest.json and loads each script
       # from next to it, so the `library` branch holds only the latest release's build.
       - name: Publish the script library (library branch)
         run: |
-          mkdir lib && cp dist/manifest.json dist/shabbat_controller.js dist/shabbat_ui.js \
-            dist/shabbat_controller_diag.js lib/
+          mkdir lib && cp dist/manifest.json dist/shabbat_controller.js dist/shabbat_ui.js lib/
           cd lib
           git init -q -b library
           git config user.name "github-actions[bot]"

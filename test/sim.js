@@ -1,15 +1,22 @@
 // Node simulator for dist/shabbat_controller.js - mocks the Shelly script APIs.
-// Usage: node test/sim.js   (BUILD=shabbat_controller_diag.js for the diag build, QUICK=1 to skip the long sweep)
+// Usage: node test/sim.js   (FLAGS=1 turns CFG.debug and CFG.diag on, QUICK=1 skips the long sweep)
 "use strict";
 const fs = require("fs");
 const path = require("path");
 const vm = require("vm");
 
 const ROOT = path.join(__dirname, "..");
-const BUILT = path.join(ROOT, "dist", process.env.BUILD || "shabbat_controller.js");
+const BUILT = path.join(ROOT, "dist", "shabbat_controller.js");
 if (!fs.existsSync(BUILT))
   throw new Error(BUILT + " missing - run `npm run build` (or `npm test`)");
-const CODE = fs.readFileSync(BUILT, "utf8");
+let CODE = fs.readFileSync(BUILT, "utf8");
+if (process.env.FLAGS) {
+  // the debug/diag code paths ship in every build, switched off; exercise them too
+  const on = CODE.replace("debug:false", "debug:true").replace("diag:false", "diag:true");
+  if (on === CODE || !/debug:true/.test(on) || !/diag:true/.test(on))
+    throw new Error("CFG.debug / CFG.diag not found in the built controller");
+  CODE = on;
+}
 // Reference windows written by tools/gen_table.py: [start, end, kind 1=Shabbat 2=Yom Tov 3=both]
 const WINDOWS = JSON.parse(fs.readFileSync(path.join(ROOT, "test/windows.json"), "utf8"));
 
@@ -587,6 +594,20 @@ if (!process.env.QUICK) {
   );
   check(/window\.SE_UI=2;/.test(r.body), "page script id looked up at boot (SE_UI=2)");
   console.log("T5 UI loader:", r.body.length, "bytes");
+}
+
+// ---------- T7: debug / diag flags (FLAGS=1) ----------
+if (process.env.FLAGS) {
+  const dev = makeDevice();
+  check(vm.runInContext("CFG.debug && CFG.diag", dev.sb) === true, "flags on");
+  const logs = dev.log.join("\n");
+  check(
+    /\[diag\] boot step/.test(logs) && /\[diag\].*mem_used=/.test(logs),
+    "diag boot + memory logs"
+  );
+  dev.tick();
+  check(/\[dbg\] tick/.test(dev.log.join("\n")), "debug tick log");
+  console.log("T7 flags on: debug + diag logs OK");
 }
 
 console.log(fails ? `\n${fails} FAILURE(S)` : "\nALL TESTS PASSED");

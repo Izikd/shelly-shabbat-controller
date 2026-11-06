@@ -36,7 +36,8 @@ let CFG = {
   tag: "shabbat", // Switch.Set tag: tells our commands from manual ones
   maxTimers: 12,
   debug: false,
-  diag: false // staged boot + memory logs (set by the diag build)
+  diag: false // staged boot (1 s per step) + memory logs: set true in a local build to debug
+  // a crash during boot. CFG.debug can be switched at runtime instead (docs/device/engine.md).
 };
 
 let DEFAULT_TIMERS = [

@@ -309,15 +309,13 @@ def main():
     src.add_argument("--release", metavar="TAG",
                      help="install a GitHub release instead of dist/: a tag (v1.0.0) or 'latest'")
     ap.add_argument("--repo", default=REPO, help=f"GitHub repository for --release (default {REPO})")
-    ap.add_argument("--diag", action="store_true",
-                    help="install the diagnostic controller build (debug/memory logging)")
     ap.add_argument("--no-ui", action="store_true", help="do not touch the shabbat_ui script")
     ap.add_argument("--restart", action="store_true",
                     help="restart the controller even if its code is unchanged")
     ap.add_argument("--dry-run", action="store_true", help="show what would change, write nothing")
     args = ap.parse_args()
 
-    ctrl_name = "shabbat_controller_diag.js" if args.diag else "shabbat_controller.js"
+    ctrl_name = "shabbat_controller.js"
     names = [ctrl_name] + ([] if args.no_ui else ["shabbat_ui.js"])
     if args.release:
         files, tag = release_files(args.repo, args.release, names)
