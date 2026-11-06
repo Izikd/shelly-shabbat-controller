@@ -130,12 +130,17 @@ Every push to `main` and every pull request runs the same checks in GitHub Actio
 (`.github/workflows/ci.yml`); the build and the page screenshots are attached to the run.
 
 ## Releasing
-Push a version tag; `.github/workflows/release.yml` builds with that version stamped into
-every file, runs the tests and publishes a GitHub release with the three scripts:
+`.github/workflows/release.yml` builds with the version stamped into every file, runs the
+tests and publishes a GitHub release with the two scripts and the library manifest (and
+updates the `library` branch). Start it either way:
+- GitHub: Actions -> Release -> Run workflow, on `main`, with the version (e.g. `v0.1.0`).
+  The release creates that tag on the commit it was built from.
+- Or push a version tag:
 ```
-git tag v1.0.0
-git push origin v1.0.0
+git tag v0.1.0
+git push origin v0.1.0
 ```
+Versions are `v0.x.y` while the project is a prototype.
 Releases are optional: local builds, tests and `deploy.py` work without any tag or release.
 
 Every build stamps its first line with the release, the commit and the build time (ISO 8601,

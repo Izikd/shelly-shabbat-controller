@@ -18,7 +18,8 @@ is `docs/README.md`. Keeping these notes current is part of every change: see
   page against a mock device (`ui_test.js` + `mockdevice.js`)
 - `library/manifest.json` Shelly script library manifest; `build.mjs` checks it and copies it
   to `dist/`, the release workflow publishes it with the scripts to the `library` branch
-- `.github/workflows/` CI on push/PR, releases on `v*` tags (and the `library` branch)
+- `.github/workflows/` CI on push/PR, releases on `v*` tags or Run workflow (and the
+  `library` branch)
 
 ## Workflow
 - Commit directly to `main`; no pull requests (the owner's preference). Push when done.
@@ -29,7 +30,8 @@ is `docs/README.md`. Keeping these notes current is part of every change: see
 - Before pushing: `npm run format` and `npm test` (builds, checks the docs' links and
   index, then all three test suites). CI runs the same checks plus `npm run check:table`.
 - Releases are prototypes: `v0.x.y` (first `v0.1.0`), no `v1.0.0` until the owner says so.
-  Never push a `v*` tag unless asked; the owner picks the version. Everything works without
+  Never push a `v*` tag or run the Release workflow unless asked; the owner picks the
+  version. Everything works without
   tags: builds are stamped `version dev - commit <sha> - built <ISO time>`.
 - Commit messages: a short subject, then why, and what was measured or tested on hardware.
 
@@ -112,7 +114,8 @@ messages, CI logs and workflow artifacts, can be read by anyone and is hard to t
 - **The `library` branch and release assets are installed on people's devices** (the
   Scripts -> Library URL points at the branch, so a push there reaches every user on their
   next install). Only `.github/workflows/release.yml` writes them, from a tested tag build;
-  never push to `library` or edit a release by hand, and never push a `v*` tag unless asked.
+  never push to `library` or edit a release by hand, and never push a `v*` tag or run the
+  Release workflow unless asked. Workflow inputs reach scripts only through `env`.
 - **No new runtime dependencies or network calls in the scripts** (the controller and the
   page talk only to the device itself); a new devDependency must be pinned in
   `package-lock.json`.

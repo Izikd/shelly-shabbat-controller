@@ -1,10 +1,17 @@
 name: Release
 
-# Push a version tag to publish a release:
-#   git tag v1.0.0 && git push origin v1.0.0
+# Publish a release, either way:
+#   - push a version tag: git tag v0.1.0 && git push origin v0.1.0
+#   - Actions -> Release -> Run workflow, on main, with the version (e.g. v0.1.0): no terminal
+#     needed; the release creates the tag on the commit it was built from
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release, e.g. v0.1.0 (creates this tag)"
+        required: true
 
 permissions:
   contents: write # create the release
@@ -13,8 +20,13 @@ jobs:
   release:
     runs-on: ubuntu-24.04
     env:
-      VERSION: ${{ github.ref_name }} # stamped into every built file
+      # stamped into every built file; passed through env, never inlined into a script
+      VERSION: ${{ inputs.version || github.ref_name }}
     steps:
+      - name: Check the version
+        run: |
+          echo "$VERSION" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$' ||
+            { echo "bad version: $VERSION (expected v1.2.3 or v1.2.3-alpha.1)"; exit 1; }
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
@@ -31,7 +43,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: >
-          gh release create "$VERSION" --verify-tag --title "$VERSION" --generate-notes
+          gh release create "$VERSION" --title "$VERSION" --generate-notes
+          $( [ "$GITHUB_EVENT_NAME" = push ] && echo --verify-tag || echo --target "$GITHUB_SHA" )
           dist/shabbat_controller.js dist/shabbat_ui.js dist/manifest.json
       # The Shelly script library (Scripts -> Library -> Configure URL) reads
       # https://raw.githubusercontent.com/<repo>/library/manifest.json and loads each script
