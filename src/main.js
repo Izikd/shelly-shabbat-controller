@@ -556,7 +556,8 @@ let UI_A =
   '<!doctype html><html><head><meta charset="utf-8">' +
   '<meta name="viewport" content="width=device-width,initial-scale=1"><title>Shabbat</title></head>' +
   '<body style="font-family:system-ui,sans-serif"><div id="app">...</div><script>window.SE_ID=';
-// UI_HTML = UI_A + <this script id> + ";window.SE_UI=" + <shabbat_ui id, -1 if unknown> + UI_B.
+// Page = UI_A + <this script id> + ";window.SE_UI=" + <shabbat_ui id, -1 if unknown> + UI_B,
+// assembled per request: keeping the assembled copy too cost ~1.4 KB of script memory.
 // To shorten the chain of round trips through a slow link, the loader starts the status
 // request (window.SE_FIRST, used by the page's first refresh) together with the code, and
 // reads the first 5 pieces (20 KB, the whole page) in one parallel round; reads past the end
@@ -575,12 +576,7 @@ let UI_B =
   'if(!u)throw new Error("script shabbat_ui not found");c=await R(u.id);if(!c)throw new Error("shabbat_ui unreadable");}' +
   'new Function(c)();}catch(e){document.getElementById("app").textContent="UI load failed: "+e.message;}})();' +
   "</script></body></html>";
-let UI_HTML = "";
 let uiId = -1;
-
-function setUiHtml() {
-  UI_HTML = UI_A + Shelly.getCurrentScriptId() + ";window.SE_UI=" + uiId + UI_B;
-}
 // looked up once at boot; the loader falls back to Script.List if it is wrong
 function onUiList(res, err) {
   if (!err && res && res.scripts) {
@@ -588,7 +584,6 @@ function onUiList(res, err) {
       if (res.scripts[i].name === "shabbat_ui") uiId = res.scripts[i].id;
     }
   }
-  setUiHtml();
 }
 
 function onUi(req, res) {
@@ -597,7 +592,7 @@ function onUi(req, res) {
     ["Content-Type", "text/html; charset=utf-8"],
     ["Cache-Control", "no-store"]
   ];
-  res.body = UI_HTML;
+  res.body = UI_A + Shelly.getCurrentScriptId() + ";window.SE_UI=" + uiId + UI_B;
   res.send();
 }
 
@@ -624,7 +619,6 @@ let BOOT = [
     }
   },
   function () {
-    setUiHtml();
     Shelly.call("Script.List", {}, onUiList);
     HTTPServer.registerEndpoint("ui", onUi);
     Script.addRpcHandler("ShabbatGet", onRpcGet);
