@@ -43,6 +43,17 @@ Download `shabbat_controller.js` and `shabbat_ui.js` from the latest
 3. Switch settings -> power-on default: **Off** (fail-safe if the controller is ever stopped).
 4. Open `http://<shelly-ip>/script/<controller id>/ui` (the console prints the exact URL).
 
+### Install from the Shelly script library
+In the device web UI: Scripts -> Library -> Configure URL, enter
+```
+https://raw.githubusercontent.com/Izikd/shelly-shabbat-controller/library/manifest.json
+```
+then install `shabbat_controller` and `shabbat_ui` from the list and continue with steps 1-4
+above (the settings page script's name must start with `shabbat_ui`). The `library` branch is
+written by the release workflow and holds the latest release's build next to `manifest.json`
+(source: `library/manifest.json`, checked and copied to `dist/` by `npm run build`). It works
+only while the repository is public: the browser fetches the files from GitHub without a token.
+
 ### Upgrading from a computer
 `tools/deploy.py` uploads the scripts to the device over its RPC API (Python, no
 dependencies; `python3 tools/deploy.py ...` works too):
@@ -52,9 +63,9 @@ uv run tools/deploy.py 192.168.1.50 --release v1.0.0   # a specific release
 uv run tools/deploy.py 192.168.1.50 --build            # build this checkout and install it
 uv run tools/deploy.py shelly.example.com --dry-run    # domain; only show what would change
 ```
-Without `--release` it installs `dist/` of this checkout (`npm run build`). While the
-repository is private, `--release` needs a GitHub token: `GITHUB_TOKEN` / `GH_TOKEN`, or a
-logged-in `gh` CLI. It prints the version on the device and the one being installed.
+Without `--release` it installs `dist/` of this checkout (`npm run build`). `--release`
+needs no token (the repository is public); `GITHUB_TOKEN` / `GH_TOKEN` or a logged-in `gh` CLI
+is used if present. It prints the version on the device and the one being installed.
 It finds the controller (name starting `shabbat_controller`, or the old `shabbat_elevator`,
 which it renames) and `shabbat_ui` scripts, creating them if missing, uploads only scripts whose code differs, verifies each upload by reading it back,
 restarts the controller, keeps `shabbat_ui` stopped, and prints memory use and the next window.

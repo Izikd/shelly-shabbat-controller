@@ -3,6 +3,7 @@
 //   dist/shabbat_controller.js       controller (src/main.js + src/table.js), minified
 //   dist/shabbat_controller_diag.js  same with debug logging + staged boot memory logs
 //   dist/shabbat_ui.js               settings page (src/ui.js), minified
+//   dist/manifest.json               script library manifest (library/manifest.json, checked)
 //
 // The Shelly keeps a running script's source in RAM, so the controller is minified too, but
 // conservatively: terser only renames local variables and drops whitespace/comments
@@ -154,4 +155,14 @@ for (const [name, code] of Object.entries(outputs)) {
   writeFileSync(dst, code);
   console.log(`${dst}: ${Buffer.byteLength(code)} bytes`);
 }
+
+// Script library manifest (Shelly web UI: Scripts -> Library -> Configure URL). Each fname is
+// resolved next to the manifest, so the release publishes it together with the scripts.
+const manifest = JSON.parse(read("library/manifest.json"));
+for (const e of manifest) {
+  if (!outputs[e.fname]) throw new Error(`library/manifest.json: unknown fname ${e.fname}`);
+  if (!e.title || !e.description) throw new Error(`library/manifest.json: ${e.fname} incomplete`);
+}
+writeFileSync(join(ROOT, "dist", "manifest.json"), JSON.stringify(manifest, null, 2) + "\n");
+console.log(`${join(ROOT, "dist", "manifest.json")}: ${manifest.length} scripts`);
 console.log(STAMP);

@@ -33,3 +33,17 @@ jobs:
         run: >
           gh release create "$VERSION" --verify-tag --title "$VERSION" --generate-notes
           dist/shabbat_controller.js dist/shabbat_ui.js dist/shabbat_controller_diag.js
+      # The Shelly script library (Scripts -> Library -> Configure URL) reads
+      # https://raw.githubusercontent.com/<repo>/library/manifest.json and loads each script
+      # from next to it, so the `library` branch holds only the latest release's build.
+      - name: Publish the script library (library branch)
+        run: |
+          mkdir lib && cp dist/manifest.json dist/shabbat_controller.js dist/shabbat_ui.js \
+            dist/shabbat_controller_diag.js lib/
+          cd lib
+          git init -q -b library
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -q -m "Script library for $VERSION"
+          git push -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" library

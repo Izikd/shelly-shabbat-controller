@@ -11,8 +11,8 @@
     python3 tools/deploy.py 192.168.1.50 --release latest   # install a GitHub release
 
 Where the scripts come from: dist/ of this checkout (`npm run build`, or --build), or with
---release the files attached to a GitHub release. While the repository is private, a
-release download needs a token: GITHUB_TOKEN / GH_TOKEN, or a logged-in `gh` CLI.
+--release the files attached to a GitHub release. The repository is public, so no token is
+needed; GITHUB_TOKEN / GH_TOKEN, or a logged-in `gh` CLI, is used if present.
 
 Steps: find the controller and `shabbat_ui` scripts on the
 device (creating them if missing), upload only the ones whose code differs, verify each
@@ -36,7 +36,7 @@ import urllib.parse
 import urllib.request
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-UI_NAME = "shabbat_ui"            # the page loader looks the UI script up by this exact name
+UI_NAME = "shabbat_ui"            # the page loader looks the UI script up by this name (prefix)
 CTRL_NAME = "shabbat_controller"
 # scripts whose name starts with one of these are the controller (the first is the old name)
 CTRL_PREFIXES = ("shabbat_controller", "shabbat_elevator")
@@ -338,7 +338,7 @@ def main():
     scripts = dev.call("Script.List")["scripts"]
     ctrl = find_or_create(dev, scripts, lambda n: n.startswith(CTRL_PREFIXES),
                           CTRL_NAME, args.dry_run)
-    ui = None if args.no_ui else find_or_create(dev, scripts, lambda n: n == UI_NAME,
+    ui = None if args.no_ui else find_or_create(dev, scripts, lambda n: n.startswith(UI_NAME),
                                                 UI_NAME, args.dry_run)
 
     # The page first: uploading it does not touch the running controller. The controller is

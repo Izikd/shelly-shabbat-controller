@@ -546,7 +546,8 @@ function onRpcPreview(req, params) {
 }
 
 // ---------------- UI loader page ----------------
-// The browser fetches the UI code from the stopped script named "shabbat_ui" in 4 KB pieces,
+// The browser fetches the UI code from the stopped script named "shabbat_ui" (or a name
+// starting with it: the script library may name it "shabbat_ui.js") in 4 KB pieces,
 // up to 4 at a time. Measured on a Pro 1 (fw 2.0.3): a read costs the device about twice its
 // size in RAM at the peak (16 KB read: +35 KB), and one ~28 KB read rebooted it; 4 KB pieces
 // in parallel cost ~6-10 KB and load the 18 KB page in ~0.8 s instead of ~3 s one by one.
@@ -572,7 +573,7 @@ let UI_B =
   "let o=c.length;while(o<n){let b=[];for(let i=0;i<4&&o<n;i++,o+=4096)b.push(g(u,o));for(let x of await Promise.all(b))c+=x.data;}" +
   'if(c.length!==n)throw new Error("incomplete code");return c};' +
   "let c=ui>=0?await R(ui):null;" +
-  'if(!c){let l=await (await fetch("/rpc/Script.List")).json(),u=l.scripts.find(function(s){return s.name==="shabbat_ui"});' +
+  'if(!c){let l=await (await fetch("/rpc/Script.List")).json(),u=l.scripts.find(function(s){return s.name.indexOf("shabbat_ui")===0});' +
   'if(!u)throw new Error("script shabbat_ui not found");c=await R(u.id);if(!c)throw new Error("shabbat_ui unreadable");}' +
   'new Function(c)();}catch(e){document.getElementById("app").textContent="UI load failed: "+e.message;}})();' +
   "</script></body></html>";
@@ -581,7 +582,7 @@ let uiId = -1;
 function onUiList(res, err) {
   if (!err && res && res.scripts) {
     for (let i = 0; i < res.scripts.length; i++) {
-      if (res.scripts[i].name === "shabbat_ui") uiId = res.scripts[i].id;
+      if (res.scripts[i].name.indexOf("shabbat_ui") === 0) uiId = res.scripts[i].id;
     }
   }
 }
