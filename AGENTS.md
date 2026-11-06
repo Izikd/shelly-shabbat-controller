@@ -13,7 +13,7 @@ is `docs/README.md`. Keeping these notes current is part of every change: see
 - `src/ui.js` settings page (runs in the browser), `src/unpack.js` unpacks it in the browser
 - `tools/build.mjs` src -> `dist/` (not committed), `tools/deploy.py` uploads to a device,
   `tools/gen_table.py` regenerates the table with hdate, `tools/check_docs.mjs` checks the
-  docs index, links and paths
+  docs index, links and paths, `tools/release_notes.sh` writes a release's notes
 - `test/` simulator (`sim.js`), fallback decoder (`inflate_test.js`), Playwright test of the
   page against a mock device (`ui_test.js` + `mockdevice.js`, which also uploads and restarts
   scripts for the update test; `stamp.js` re-stamps a build with a version)
@@ -71,6 +71,9 @@ The owner works in stages and says when to move on; do not run ahead of the curr
   tag itself. Everything works without
   tags: builds are stamped `version dev - commit <sha> - built <ISO time>`.
 - Commit messages: a short subject, then why, and what was measured or tested on hardware.
+  The subjects become the release notes (`tools/release_notes.sh`: the commits since the
+  previous release, for a stable one since the previous stable), and the page's "What's
+  new" links there, so write subjects a user can read.
 
 ## Done means: code, tests and notes together
 A change is not finished until the notes match it. In the same commit:
@@ -121,14 +124,14 @@ Each has a reason in `docs/device/` and `docs/experiments/`.
   a feature that would cross it needs the owner's decision
   (`docs/experiments/page-size-and-load.md`).
 - **KVS keys `shabbat_elev_cfg` / `shabbat_elev_log` keep their names** (old project name):
-  renaming them loses users' timers and log.
+  renaming them loses users' timers and log. `shabbat_upd_beta` ("1" / "0") is the page's
+  beta-channel choice, written by the browser with the firmware's `KVS.Set`.
 - **Older releases must keep reading the saved settings**: users can go back from a beta to
   an older stable release from the page ("Install stable"). An older controller keeps only
   `t`, `a`, `s` of `shabbat_elev_cfg` and falls back to its default timers (until the next
   save) if `t` does not pass its `validTimer` (exactly 6 integers per timer). So add new
   settings as new top-level fields, never change the shape of a timer or the meaning of an
-  existing field; if a change cannot avoid it, say so in that release's notes. `shabbat_upd_beta` ("1" / "0") is the page's
-  beta-channel choice, written by the browser with the firmware's `KVS.Set`.
+  existing field; if a change cannot avoid it, say so in that release's notes.
 - **`shabbat_ui` never runs on the device**; it only stores the page code. deploy.py keeps it
   stopped and disabled.
 - **Mocks must behave like the device** (`test/mockdevice.js`, `test/sim.js`): byte-range

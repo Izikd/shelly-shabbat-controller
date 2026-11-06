@@ -163,7 +163,9 @@ updates the `library` branch). Start it either way:
 git tag v0.1.0
 git push origin v0.1.0
 ```
-Versions are `v0.x.y` while the project is a prototype. A version with a suffix
+Versions are `v0.x.y` while the project is a prototype. The release notes list the commit
+subjects since the previous release (`tools/release_notes.sh`; for a stable release, since
+the previous stable one, so they cover its betas). A version with a suffix
 (`v0.2.0-beta.1`, `v0.2.0-rc.1`) is a beta: it is marked as a pre-release on GitHub (so
 `deploy.py --release latest` skips it) and published only to the `library-beta` branch, for
 testers. A version without a suffix updates the stable `library` branch.

@@ -64,3 +64,12 @@ per round trip). Entries are dated, newest last; keep the method so a test can b
 - **Decision**: works as designed; the mock now answers `syntax_error` and `No handler`
   like the device.
 
+## 2026-11-06 - Installing published beta releases from the page (owner's test)
+- **Method**: the owner, on the Pro 1 (fw 2.0.3) with "Beta versions" on, used Check for
+  updates -> Install against the real `library-beta` branch: a development build of 4f250e2
+  -> `v0.2.0-beta.1` (13f7a5d), -> `v0.2.0-beta.2` (same commit), -> `v0.2.0-beta.3`
+  (cc48cfd, adds the version link and leaving beta).
+- **Result**: all three installs worked (owner's report); no timings were taken.
+- **Not tested**: a connection drop mid-install; going back to stable with "Install stable"
+  (it would reach `v0.1.0`, which has no update card, so only `deploy.py` could return).
+
