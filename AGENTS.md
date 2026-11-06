@@ -28,7 +28,8 @@ is `docs/README.md`. Keeping these notes current is part of every change: see
   `library` (written by the release workflow).
 - Before pushing: `npm run format` and `npm test` (builds, checks the docs' links and
   index, then all three test suites). CI runs the same checks plus `npm run check:table`.
-- Releases are not in use yet. Never push a `v*` tag unless asked. Everything works without
+- Releases are prototypes: `v0.x.y` (first `v0.1.0`), no `v1.0.0` until the owner says so.
+  Never push a `v*` tag unless asked; the owner picks the version. Everything works without
   tags: builds are stamped `version dev - commit <sha> - built <ISO time>`.
 - Commit messages: a short subject, then why, and what was measured or tested on hardware.
 
