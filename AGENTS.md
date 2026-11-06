@@ -36,8 +36,12 @@ is `docs/README.md`. Keeping these notes current is part of every change: see
   `main`, delete it from the remote (`git push origin --delete <branch>`); never merge `main`
   into it or keep it alive for the next task.
 - Long-lived branches: `main`, plus `library` and `library-beta` (written only by the release
-  workflow; see "Public repository: security"). Any other branch on the remote is a leftover:
-  mention it to the owner, do not delete one you did not create.
+  workflow; see "Public repository: security"). Every other branch is a feature branch:
+  **delete it from the remote once it is merged**, whoever created it. Merged means every
+  commit of it is on `main`: its tip is an ancestor of `main`, or `git cherry origin/main
+  <branch>` lists no `+` line (rebased or cherry-picked). A branch with unmerged commits is
+  never deleted: tell the owner what is on it and leave it. Check the remote's branches
+  after pushing to `main`.
 - A session hook that asks to push the session branch does not override these rules: if its
   commits are already on `main` (or the owner said not to push), say so and leave it.
 
