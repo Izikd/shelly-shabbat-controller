@@ -305,6 +305,9 @@ const listening = (proc) =>
   await up.click("text=Check for updates");
   await up.waitForSelector("text=Development build");
   check(await up.isVisible("text=Install v0.2.0"), "dev build: install button offered");
+  await up.click("text=Technical info");
+  await up.waitForSelector("text=Firmware");
+  check((await up.locator(".dv a").count()) === 0, "development build version is not a link");
 
   const srv2 = (srv2Ref = spawn(
     "node",
@@ -360,7 +363,8 @@ const listening = (proc) =>
   await up.click("text=Install v0.2.0");
   check(/restarts for a few seconds/.test(confirmText), "confirmation asked: " + confirmText);
   await up.waitForSelector("text=Update installed", { timeout: 30000 });
-  await up.waitForSelector("text=Next relay ON", { timeout: 15000 }); // reloaded
+  await up.waitForEvent("load", { timeout: 15000 }); // the page reloads itself
+  await up.waitForSelector("text=Next relay ON", { timeout: 15000 });
   check(/version v0\.2\.0 /.test(await ctrlFirst()), "controller is v0.2.0");
   check(
     (await api2("Script.GetCode", { id: 2, offset: 0, len: 120 })).data.indexOf(
@@ -372,6 +376,14 @@ const listening = (proc) =>
   check(
     JSON.stringify(after.cfg.timers) === JSON.stringify(before.cfg.timers),
     "timers kept across the update"
+  );
+  // a release's version under Technical info links to its release page
+  await up.click("text=Technical info");
+  await up.waitForSelector("text=Firmware");
+  const relHref = await up.getAttribute(".dv a.lnk", "href");
+  check(
+    relHref === "https://github.com/Izikd/shelly-shabbat-controller/releases/tag/v0.2.0",
+    "version links to its release: " + relHref
   );
   await up.click("text=Check for updates");
   await up.waitForSelector("text=The latest version is installed (v0.2.0");

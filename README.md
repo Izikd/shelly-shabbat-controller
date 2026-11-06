@@ -169,7 +169,8 @@ Every build stamps its first line with the release, the commit and the build tim
 UTC): `... - version v1.0.0 - commit e59860a - built 2026-11-06T08:20Z` for a release,
 `version dev - ...` for any other build (`-dirty` if tracked files had uncommitted changes).
 `SOURCE_DATE_EPOCH` sets the build time for a reproducible build. The settings page shows it
-under Technical info (`v1.0.0 · e59860a`, built `2026-11-06 10:20` Israel time), and
+under Technical info (`v1.0.0 · e59860a`, built `2026-11-06 10:20` Israel time; a release's
+version, stable or beta, links to its GitHub release page), and
 `deploy.py` prints the version on the device and the one being installed. `deploy.py` ignores
 the build time when comparing, so rebuilding the same commit does not re-upload.
 

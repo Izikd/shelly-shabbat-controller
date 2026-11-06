@@ -841,7 +841,7 @@ if (typeof document !== "undefined")
       var rows = [
         [
           L.dVersion,
-          d.ver === UI_VERSION || !d.ver ? UI_VERSION : tr(L.dVerBoth, d.ver, UI_VERSION)
+          d.ver === UI_VERSION || !d.ver ? verLink(UI_VERSION) : tr(L.dVerBoth, d.ver, UI_VERSION)
         ],
         [
           L.dBuilt,
@@ -878,7 +878,7 @@ if (typeof document !== "undefined")
             "div",
             { cls: "line sb drow" },
             h("span", { cls: "s" }, r[0]),
-            h("span", { cls: "dv" }, String(r[1]))
+            h("span", { cls: "dv" }, typeof r[1] === "object" ? r[1] : String(r[1]))
           );
         })
       );
@@ -1386,6 +1386,16 @@ if (typeof document !== "undefined")
             );
         });
     }
+    // a release (stable or beta) links to its GitHub release page; a development build does not
+    function verLink(label) {
+      var v = label.split(" · ")[0];
+      return semver(v)
+        ? h("a", { cls: "lnk", href: relUrl(v), target: "_blank", rel: "noopener" }, label)
+        : label;
+    }
+    function relUrl(v) {
+      return "https://github.com/" + REPO + "/releases/tag/" + encodeURIComponent(v);
+    }
     function viewUpdate() {
       var U = S.upd || {};
       var box = h("div", { cls: "card col" }, h("b", null, L.upd));
@@ -1419,7 +1429,7 @@ if (typeof document !== "undefined")
             "a",
             {
               cls: "lnk",
-              href: "https://github.com/" + REPO + "/releases/tag/" + encodeURIComponent(U.v),
+              href: relUrl(U.v),
               target: "_blank",
               rel: "noopener"
             },
