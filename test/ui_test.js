@@ -224,6 +224,21 @@ const NOW = 1793731800; // Tue 03/11/2026 20:50 Israel
   await en.click("button.lang");
   await en.waitForSelector("text=Next relay ON");
 
+  // older browser: no DecompressionStream -> the page's own decoder (src/unpack.js)
+  const old = await browser.newPage({ locale: "en-US", timezoneId: "Europe/London" });
+  old.on("pageerror", (e) => errors.push("old: " + e.message));
+  await old.addInitScript(() => {
+    delete window.DecompressionStream;
+  });
+  await old.goto(`http://localhost:${PORT}/script/1/ui`);
+  await old.waitForSelector("text=Next relay ON");
+  check(
+    await old.evaluate(() => typeof DecompressionStream === "undefined"),
+    "fallback decoder path used"
+  );
+  await old.click("role=tab[name='Timers']");
+  await old.waitForSelector("text=After candle lighting");
+
   check(errors.length === 0, "page errors: " + errors.join(" | "));
   console.log(fails ? fails + " UI FAILURE(S)" : "UI TESTS PASSED");
   await browser.close();

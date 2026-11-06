@@ -26,6 +26,7 @@ import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execSync } from "node:child_process";
+import { deflateSync, constants as zc } from "node:zlib";
 import { minify } from "terser";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -80,14 +81,35 @@ function squeezeCss(src) {
 async function ui(src) {
   if (!src.includes('"@@VERSION@@"')) throw new Error('src/ui.js: "@@VERSION@@" marker missing');
   src = src.replace('"@@VERSION@@"', JSON.stringify(STAMP));
-  const out = await minify(squeezeCss(src), {
+  const page = await minify(squeezeCss(src), {
     compress: { ecma: 2020 },
     mangle: { toplevel: true }, // runs inside new Function(), nothing outside sees its names
-    format: { ...FORMAT, ecma: 2020, ascii_only: true }
+    format: { ...FORMAT, ecma: 2020 } // UTF-8: it is compressed below, so it may be non-ASCII
   });
+  // Compress the page (zlib) and store it base64 inside src/unpack.js, which the browser runs:
+  // ~35 KB of ASCII-escaped code becomes ~15 KB of ASCII, so fewer Script.GetCode reads.
+  const payload = deflateSync(Buffer.from(page.code, "utf8"), {
+    level: 9,
+    windowBits: 15, // 32 KB window: the size browsers' DecompressionStream("deflate") accepts
+    strategy: zc.Z_DEFAULT_STRATEGY
+  }).toString("base64");
+  const unpack = read("src/unpack.js");
+  if (!unpack.includes('"@@PAYLOAD@@"')) throw new Error('src/unpack.js: "@@PAYLOAD@@" missing');
+  const out = await minify(
+    unpack.replace('"@@PAYLOAD@@"', () => JSON.stringify(payload)),
+    {
+      compress: { ecma: 5 }, // the unpacker must also run on old browsers
+      mangle: { toplevel: true },
+      format: { ...FORMAT, ascii_only: true }
+    }
+  );
+  console.log(
+    `settings page: ${Buffer.byteLength(page.code)} bytes minified, ` +
+      `${payload.length} as compressed base64`
+  );
   return (
     `// shabbat_ui - ${STAMP} - DO NOT START this script. It only stores the ` +
-    "settings page code, loaded by the browser from /script/<id>/ui\n" +
+    "settings page code (compressed), loaded by the browser from /script/<id>/ui\n" +
     out.code +
     "\n"
   );

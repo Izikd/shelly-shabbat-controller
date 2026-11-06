@@ -68,6 +68,11 @@ Hebrew and English. A browser set to Hebrew gets Hebrew on the first visit, any 
 gets English; the button in the header switches language and the browser remembers the choice
 (it is not stored on the device). All page text is in the `I18N` table at the top of
 `src/ui.js` - add a language by adding an entry there.
+
+The page is stored compressed on the device (~18 KB instead of ~36 KB, so it loads with
+fewer reads): browsers unpack it with their built-in `DecompressionStream`, and older ones
+with a small decoder in `src/unpack.js`. It works in Chrome / Edge 86+, Safari 14+ (iOS 14+)
+and Firefox 78+.
 - **Status**: Shabbat / Yom Tov now, next window, next relay ON, automation on/off,
   skip next window (one-off), test time (simulated clock, RAM only).
 - **Timers** (up to 12): start point candle lighting (+min) / fixed time / havdalah (-min),
@@ -122,7 +127,8 @@ it under Technical info as `v1.0.0 · e59860a` or `e59860a`, and `deploy.py` pri
 version on the device and the one being installed.
 
 ## Layout
-- `src/main.js` controller, `src/ui.js` settings page, `src/table.js` generated table
+- `src/main.js` controller, `src/ui.js` settings page, `src/table.js` generated table,
+  `src/unpack.js` unpacks the compressed page in the browser (with a fallback decoder)
 - `tools/gen_table.py` table generator (hdate; adds DST periods). Writes `src/table.js` and
   `test/windows.json` (the simulator's reference). To extend or move the table:
   `uv run tools/gen_table.py --years 2025 ... 2035` (`--lat/--lon` for another city), then
@@ -135,6 +141,7 @@ version on the device and the one being installed.
   limits below). Top-level names are kept for `test/sim.js`
 - `tools/deploy.py` uploads a build or a release to a device (see "Upgrading from a computer")
 - `.github/workflows/` CI (format, build, tests, table check) and releases
+- `test/inflate_test.js` the fallback decoder against Node's zlib
 - `test/sim.js` device simulator (minute-by-minute relay sweep vs an independent reference)
 - `test/mockdevice.js` + `test/ui_test.js` fake Shelly + Playwright browser test of the page
 
