@@ -546,8 +546,11 @@ function onRpcPreview(req, params) {
 }
 
 // ---------------- UI loader page ----------------
-// The browser fetches the UI code from the stopped script named "shabbat_ui", 4 KB at a time:
-// one large Script.GetCode read (~28 KB) rebooted a Pro 1.
+// The browser fetches the UI code from the stopped script named "shabbat_ui" in 4 KB pieces,
+// up to 4 at a time. Measured on a Pro 1 (fw 2.0.3): a read costs the device about twice its
+// size in RAM at the peak (16 KB read: +35 KB), and one ~28 KB read rebooted it; 4 KB pieces
+// in parallel cost ~6-10 KB and load the 18 KB page in ~0.8 s instead of ~3 s one by one.
+// The built scripts are ASCII, so byte offsets are character offsets.
 let UI_A =
   // language-neutral: the page code sets lang, dir and title (Hebrew or English)
   '<!doctype html><html><head><meta charset="utf-8">' +
@@ -558,8 +561,11 @@ let UI_B =
   'let l=await (await fetch("/rpc/Script.List")).json();' +
   'let u=l.scripts.find(function(s){return s.name==="shabbat_ui"});' +
   'if(!u)throw new Error("script shabbat_ui not found");' +
-  'let c="",o=0,te=new TextEncoder();for(;;){let r=await (await fetch("/rpc/Script.GetCode?id="+u.id+"&len=4096&offset="+o)).json();' +
-  "c+=r.data;o+=te.encode(r.data).length;if(!r.left||!r.data.length)break;}" +
+  'let g=function(o){return fetch("/rpc/Script.GetCode?id="+u.id+"&len=4096&offset="+o).then(function(r){return r.json()})};' +
+  "let f=await g(0),n=f.data.length+f.left,c=f.data,o=c.length;" +
+  "while(o<n){let b=[];for(let i=0;i<4&&o<n;i++,o+=4096)b.push(g(o));" +
+  "for(let r of await Promise.all(b))c+=r.data;}" +
+  'if(c.length!==n)throw new Error("incomplete code");' +
   'new Function(c)();}catch(e){document.getElementById("app").textContent="UI load failed: "+e.message;}})();' +
   "</script></body></html>";
 let UI_HTML = "";

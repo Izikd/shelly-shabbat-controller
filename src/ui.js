@@ -1049,59 +1049,77 @@ if (typeof document !== "undefined")
     // ---------- full schedule: decoded in the browser from the controller's own code ----------
     // (Script.GetCode is served by the firmware: no memory cost for the controller)
     var A64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+-";
-    function loadTable() {
-      if (S.tbl || S.tblLoading) return;
-      S.tblLoading = true;
-      var code = "",
-        off = 0,
-        te = new TextEncoder();
-      function next() {
-        fetch("/rpc/Script.GetCode?id=" + ID + "&len=4096&offset=" + off) // small reads: see main.js
+    // A script's code via Script.GetCode in 4 KB pieces, up to 4 at a time - the same pattern
+    // as the loader in main.js (fast, small memory spikes on the device). The built scripts are
+    // ASCII, so offsets in bytes are offsets in characters.
+    function readCode(id) {
+      function piece(o) {
+        return fetch("/rpc/Script.GetCode?id=" + id + "&len=4096&offset=" + o)
           .then(function (r) {
             return r.json();
           })
           .then(function (j) {
             if (j.data === undefined) throw new Error(j.message || "GetCode");
-            code += j.data;
-            off += te.encode(j.data).length;
-            if (j.left && j.data.length) {
-              next();
-              return;
-            }
-            var b = code.match(/TBL_BASE\s*=\s*(\d+)/),
-              t = code.match(/TBL_T\s*=\s*(\[[^\]]*\])/),
-              d = code.match(/TBL\s*=\s*"([A-Za-z0-9+\-]*)"/);
-            if (!b || !t || !d) throw new Error("table not found in controller code");
-            var base = +b[1],
-              titles = JSON.parse(t[1]),
-              data = d[1],
-              out = [];
-            function dec(p, w) {
-              var n = 0;
-              for (var i = 0; i < w; i++) n = n * 64 + A64.indexOf(data.charAt(p + i));
-              return n;
-            }
-            for (var p = 0; p + 8 <= data.length; p += 8) {
-              var st = base + dec(p, 4) * 60,
-                ti = titles[A64.indexOf(data.charAt(p + 7))];
-              out.push({
-                s: st,
-                e: st + dec(p + 4, 3) * 60,
-                t: ti,
-                k: ti === "Shabbat" ? 1 : ti.indexOf("Shabbat") >= 0 ? 3 : 2
-              });
-            }
-            S.tbl = out;
-            S.tblLoading = false;
-            render();
-          })
-          .catch(function (e) {
-            S.tblErr = e.message;
-            S.tblLoading = false;
-            render();
+            return j;
           });
       }
-      next();
+      return piece(0).then(function (first) {
+        var n = first.data.length + first.left,
+          code = first.data,
+          offs = [];
+        for (var o = code.length; o < n; o += 4096) offs.push(o);
+        function batch(i) {
+          if (i >= offs.length) {
+            if (code.length !== n) throw new Error("incomplete code");
+            return code;
+          }
+          return Promise.all(offs.slice(i, i + 4).map(piece)).then(function (rs) {
+            rs.forEach(function (r) {
+              code += r.data;
+            });
+            return batch(i + 4);
+          });
+        }
+        return batch(0);
+      });
+    }
+    function loadTable() {
+      if (S.tbl || S.tblLoading) return;
+      S.tblLoading = true;
+      readCode(ID)
+        .then(function (code) {
+          var b = code.match(/TBL_BASE\s*=\s*(\d+)/),
+            t = code.match(/TBL_T\s*=\s*(\[[^\]]*\])/),
+            d = code.match(/TBL\s*=\s*"([A-Za-z0-9+\-]*)"/);
+          if (!b || !t || !d) throw new Error("table not found in controller code");
+          var base = +b[1],
+            titles = JSON.parse(t[1]),
+            data = d[1],
+            out = [];
+          function dec(p, w) {
+            var n = 0;
+            for (var i = 0; i < w; i++) n = n * 64 + A64.indexOf(data.charAt(p + i));
+            return n;
+          }
+          for (var p = 0; p + 8 <= data.length; p += 8) {
+            var st = base + dec(p, 4) * 60,
+              ti = titles[A64.indexOf(data.charAt(p + 7))];
+            out.push({
+              s: st,
+              e: st + dec(p + 4, 3) * 60,
+              t: ti,
+              k: ti === "Shabbat" ? 1 : ti.indexOf("Shabbat") >= 0 ? 3 : 2
+            });
+          }
+          S.tbl = out;
+          S.tblLoading = false;
+          render();
+        })
+        .catch(function (e) {
+          S.tblErr = e.message;
+          S.tblLoading = false;
+          render();
+        });
     }
     function dur(sec) {
       var h = Math.round(sec / 3600);
