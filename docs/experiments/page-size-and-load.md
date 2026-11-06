@@ -71,6 +71,9 @@ per round trip). Entries are dated, newest last; keep the method so a test can b
   read that rebooted the device.
 - **Decision** (owner): the loader reads 6 pieces (24 KB) in its first round, so the 21 KB
   page loads in one round again; reads past the end return no data, as before.
+- **Check after the change** (4f250e2 on the Pro 1): 6 reads in one round, page ready median
+  1.86 s over 7 cold loads (range 1.73-3.88 s); controller `mem_used` 14,238 / `mem_peak`
+  16,184 unchanged; no reboot.
 
 ## Ideas not tried yet
 - Inline the first status into the HTML (saves one round trip; costs controller work per
