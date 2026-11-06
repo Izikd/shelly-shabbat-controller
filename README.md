@@ -147,10 +147,8 @@ the build time when comparing, so rebuilding the same commit does not re-upload.
 - `test/sim.js` device simulator (minute-by-minute relay sweep vs an independent reference)
 - `test/mockdevice.js` + `test/ui_test.js` fake Shelly + Playwright browser test of the page
 
-## Shelly engine constraints learned on the device (fw 2.0.3)
-- `@meta` virtual-component declarations crashed the device -> not used.
-- Small JS stack: keep call depth <= 5 and expressions flat; start work from timer callbacks.
-- RPC handlers (`Script.addRpcHandler`) run with even less stack: they only queue the call;
-  the work runs from a timer callback and answers the request from there.
-- No `Array.prototype.sort`; no `\u` escapes in strings (use UTF-8).
-- Max 5 event subscriptions / timers / RPC handlers per script; ~25 KB JS memory pool.
+## More documentation
+- `AGENTS.md` - how to work on the project (for AI agents and humans): workflow, commands,
+  rules that must not be broken
+- `docs/` - Shelly engine and firmware limits learned on the device (`docs/device/`) and
+  measurements with the decisions they led to (`docs/experiments/`); index in `docs/README.md`
