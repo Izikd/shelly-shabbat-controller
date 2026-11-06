@@ -9,6 +9,12 @@
 // Params come from the query string or a JSON body, as on the device.
 // It also runs the schedule service (service/src, in-memory database) on port + 1, and the
 // script's HTTP.Request calls to the real service address (PUB_URL in src/ui.js) go there.
+// Connections: like a busy device (other pages, apps and tabs hold most of its few
+// connections, docs/device/network.md), it serves at most MOCK_FREE_CONN requests at once
+// (default 3), each taking MOCK_LATENCY_MS (default 40); a request beyond that is refused,
+// alternately by dropping the connection (a browser on the LAN: "Failed to fetch") and with
+// a proxy's HTML 502 page (through a tunnel). GET /mock/stats -> {refused, maxInFlight};
+// GET /mock/refuse?n=3 refuses the next 3 RPC requests whatever the load.
 // Usage: node test/mockdevice.js [port] [unix-time] [version stamped into the controller]
 "use strict";
 const fs = require("fs"),
@@ -159,9 +165,48 @@ Promise.all([import("../service/src/index.js"), import("./fake_d1.mjs")]).then((
     .listen(port + 1);
 });
 
+const FREE_CONN = +(process.env.MOCK_FREE_CONN || 3);
+const LATENCY = +(process.env.MOCK_LATENCY_MS || 40);
+const conn = { inFlight: 0, maxInFlight: 0, refused: 0, refuseNext: 0 };
+function refuse(req, res) {
+  conn.refused++;
+  if (conn.refused % 2) return req.socket.destroy();
+  res.writeHead(502, { "Content-Type": "text/html; charset=UTF-8" });
+  res.end(
+    "<!DOCTYPE html><html><head><title>502 Bad gateway</title></head><body>error code: 502</body></html>"
+  );
+}
+
 http
   .createServer((req, res) => {
     const u = new URL(req.url, "http://x");
+    if (u.pathname === "/mock/stats") {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      return res.end(JSON.stringify({ refused: conn.refused, maxInFlight: conn.maxInFlight }));
+    }
+    if (u.pathname === "/mock/refuse") {
+      conn.refuseNext = +u.searchParams.get("n") || 0;
+      res.writeHead(200, { "Content-Type": "application/json" });
+      return res.end("{}");
+    }
+    if (conn.refuseNext > 0 && u.pathname.startsWith("/rpc/")) {
+      conn.refuseNext--;
+      return refuse(req, res);
+    }
+    if (conn.inFlight >= FREE_CONN) return refuse(req, res);
+    conn.inFlight++;
+    if (conn.inFlight > conn.maxInFlight) conn.maxInFlight = conn.inFlight;
+    res.on("close", () => conn.inFlight--);
+    setTimeout(() => serve(req, res, u), LATENCY);
+  })
+  .listen(port, () =>
+    console.log(
+      "mock Shelly on http://localhost:" + port + "/script/1/ui  now=" + now + " relay=" + dev.relay
+    )
+  );
+
+function serve(req, res, u) {
+  {
     let body = "";
     req.on("data", (c) => (body += c));
     req.on("end", () => {
@@ -311,9 +356,5 @@ http
       if (m) return json(res, 404, { code: 404, message: "No handler for Script." + m[1] });
       json(res, 404, { code: 404, message: "not found" });
     });
-  })
-  .listen(port, () =>
-    console.log(
-      "mock Shelly on http://localhost:" + port + "/script/1/ui  now=" + now + " relay=" + dev.relay
-    )
-  );
+  }
+}

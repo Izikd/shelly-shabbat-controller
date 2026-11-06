@@ -114,8 +114,13 @@ Each has a reason in `docs/device/` and `docs/experiments/`.
 - **Built files are pure ASCII.** `build.mjs` fails otherwise. The page is escaped and
   compressed; the controller cannot be escaped (the engine rejects `\u` escapes), so no
   non-ASCII text in `src/main.js` code paths that reach the device.
-- **Read script code in small pieces**: `Script.GetCode` with `len=4096`, several in
-  parallel. A large read costs the device about twice its size in RAM and has rebooted it.
+- **Read script code in small pieces**: `Script.GetCode` with `len=4096`. A large read costs
+  the device about twice its size in RAM and has rebooted it.
+- **At most 2 requests to the device in flight, retried when refused**: the device has only a
+  few connections, shared by every open page, app and tab, and refuses the rest ("Failed to
+  fetch" on the LAN, a 502 page through a tunnel). The loader (`UI_B` in `src/main.js`) and
+  the page (`dev` in `src/ui.js`) queue their requests; only requests that are safe to repeat
+  are retried (never a `PutCode` append). The mock refuses beyond 3 at once.
 - **Controller code style**: call depth <= 5, flat expressions, named top-level callbacks,
   no `Array.prototype.sort`, at most 5 timers / handlers / concurrent `Shelly.call`s.
   RPC handlers only queue work; a timer callback does it (`enqueue`/`runQueue`).
@@ -123,8 +128,8 @@ Each has a reason in `docs/device/` and `docs/experiments/`.
   statement merging. Top-level names must survive; `test/sim.js` calls them.
 - **Script memory is tight** (~25 KB pool shared by running scripts; peak ~16-20 KB).
   Do not keep large strings around (assemble per request); check `mem_peak` after a deploy.
-- **Page budget: `dist/shabbat_ui.js` at most 24,576 bytes** (the loader reads 6 x 4 KB in
-  its first round; past that every load needs a second round). The build prints the size;
+- **Page budget: `dist/shabbat_ui.js` at most 24,576 bytes** (the loader asks for 6 x 4 KB
+  first, 2 at a time; past that every load waits for them and then reads the rest). The build prints the size;
   a feature that would cross it needs the owner's decision
   (`docs/experiments/page-size-and-load.md`).
 - **KVS keys `shabbat_elev_cfg` / `shabbat_elev_log` keep their names** (old project name):

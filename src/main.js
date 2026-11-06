@@ -708,7 +708,7 @@ function doPub(req, params) {
 // ---------------- UI loader page ----------------
 // The browser fetches the UI code from the stopped script named "shabbat_ui" (or a name
 // starting with it: the script library may name it "shabbat_ui.js") in 4 KB pieces,
-// up to 4 at a time. Measured on a Pro 1 (fw 2.0.3): a read costs the device about twice its
+// 2 at a time (see below). Measured on a Pro 1 (fw 2.0.3): a read costs the device about twice its
 // size in RAM at the peak (16 KB read: +35 KB), and one ~28 KB read rebooted it; 4 KB pieces
 // in parallel cost ~6-10 KB and load the 18 KB page in ~0.8 s instead of ~3 s one by one.
 // The built scripts are ASCII, so byte offsets are character offsets.
@@ -719,24 +719,35 @@ let UI_A =
   '<body style="font-family:system-ui,sans-serif"><div id="app">...</div><script>window.SE_ID=';
 // Page = UI_A + <this script id> + ";window.SE_UI=" + <shabbat_ui id, -1 if unknown> + UI_B,
 // assembled per request: keeping the assembled copy too cost ~1.4 KB of script memory.
-// To shorten the chain of round trips through a slow link, the loader starts the status
-// request (window.SE_FIRST, used by the page's first refresh) together with the code, and
-// reads the first 6 pieces (24 KB, the whole page) in one parallel round, any rest in a second;
-// reads past the end
-// return no data. With no known id, or code that is not shabbat_ui, it looks the id up.
+// The loader starts the status request (window.SE_FIRST, used by the page's first refresh)
+// first, then asks for the first 6 pieces (24 KB, the whole page) and any rest; reads past
+// the end return no data. With no known id, or code that is not shabbat_ui, it looks the
+// id up.
+// The device accepts only a few connections at a time, shared by every open page, app and
+// tab: a burst of 7 requests failed with "Failed to fetch" (502 through a tunnel) while other
+// windows were open (docs/device/network.md). So the loader keeps at most 2 requests in flight
+// (J queues the rest) and retries a request up to 3 times when it fails or the answer is not
+// the device's JSON.
 let UI_B =
-  ";(async function(){try{let id=window.SE_ID,ui=window.SE_UI;" +
-  'window.SE_FIRST=fetch("/rpc/Script.ShabbatGet",{method:"POST",body:JSON.stringify({id:id})}).then(function(r){return r.json()});' +
-  'let g=function(u,o){return fetch("/rpc/Script.GetCode?id="+u+"&len=4096&offset="+o).then(function(r){return r.json()})};' +
+  ";(async function(){try{let id=window.SE_ID,ui=window.SE_UI,A=0,Q=[];" +
+  "let N=function(){if(A<2&&Q.length){A++;Q.shift()()}};" +
+  "let J=function(u,o){return new Promise(function(ok,no){Q.push(async function(){" +
+  "for(let a=0;;a++){try{let r=await fetch(u,o),t=await r.text();" +
+  'if(t.charAt(0)!=="{")throw new Error("HTTP "+r.status);ok(JSON.parse(t));break}' +
+  "catch(e){if(a>2){no(e);break}await new Promise(function(s){setTimeout(s,300+500*a)})}}" +
+  "A--;N()});N()})};" +
+  'window.SE_FIRST=J("/rpc/Script.ShabbatGet",{method:"POST",body:JSON.stringify({id:id})});' +
+  'let g=function(u,o){return J("/rpc/Script.GetCode?id="+u+"&len=4096&offset="+o)};' +
   "let R=async function(u){let p=[];for(let i=0;i<6;i++)p.push(g(u,i*4096));let r=await Promise.all(p);" +
   'if(!r[0].data||r[0].data.indexOf("// shabbat_ui")!==0)return null;' +
   'let n=r[0].data.length+r[0].left,c="";for(let x of r)c+=x.data||"";' +
   "let o=c.length;while(o<n){let b=[];for(let i=0;i<4&&o<n;i++,o+=4096)b.push(g(u,o));for(let x of await Promise.all(b))c+=x.data;}" +
   'if(c.length!==n)throw new Error("incomplete code");return c};' +
   "let c=ui>=0?await R(ui):null;" +
-  'if(!c){let l=await (await fetch("/rpc/Script.List")).json(),u=l.scripts.find(function(s){return s.name.indexOf("shabbat_ui")===0});' +
+  'if(!c){let l=await J("/rpc/Script.List"),u=l.scripts.find(function(s){return s.name.indexOf("shabbat_ui")===0});' +
   'if(!u)throw new Error("script shabbat_ui not found");c=await R(u.id);if(!c)throw new Error("shabbat_ui unreadable");}' +
-  'new Function(c)();}catch(e){document.getElementById("app").textContent="UI load failed: "+e.message;}})();' +
+  'new Function(c)();}catch(e){document.getElementById("app").textContent="UI load failed: "+e.message+' +
+  '" - if other pages of this device are open, close them and reload";}})();' +
   "</script></body></html>";
 let uiId = -1;
 // looked up once at boot; the loader falls back to Script.List if it is wrong

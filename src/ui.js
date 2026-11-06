@@ -431,14 +431,64 @@ if (typeof document !== "undefined")
     // first visit: Hebrew for a Hebrew browser, English otherwise
     setLang(savedLang || (/^(he|iw)\b/i.test(navigator.language || "") ? "he" : "en"), false);
 
+    // ---------- requests to the device ----------
+    // The device accepts only a few connections at a time, shared by every open page, app and
+    // tab (docs/device/network.md), so at most 2 of this page's requests are in flight; the
+    // rest wait in a queue. With retry, a request that fails ("Failed to fetch", or a proxy's
+    // error page instead of the device's JSON) is tried again up to 3 times: only for
+    // requests that are safe to repeat (not code uploads, which manage their own retries).
+    var inFlight = 0,
+      waiting = [];
+    function nextReq() {
+      if (inFlight < 2 && waiting.length) {
+        inFlight++;
+        waiting.shift()();
+      }
+    }
+    function dev(url, opts, retry) {
+      return new Promise(function (ok, no) {
+        function attempt(a) {
+          fetch(url, opts)
+            .then(function (r) {
+              return r.text().then(function (t) {
+                // not the device's answer (a proxy's error page): like a lost connection
+                if (t.charAt(0) !== "{") throw new TypeError("HTTP " + r.status);
+                return JSON.parse(t);
+              });
+            })
+            .then(
+              function (j) {
+                inFlight--;
+                nextReq();
+                ok(j);
+              },
+              function (e) {
+                if (retry && a < 3)
+                  return setTimeout(
+                    function () {
+                      attempt(a + 1);
+                    },
+                    300 + 500 * a
+                  );
+                inFlight--;
+                nextReq();
+                no(e);
+              }
+            );
+        }
+        waiting.push(function () {
+          attempt(0);
+        });
+        nextReq();
+      });
+    }
+
     // ---------- RPC ----------
     function rpc(method, params, cb) {
       params = params || {};
       params.id = ID;
-      fetch("/rpc/Script." + method, { method: "POST", body: JSON.stringify(params) })
-        .then(function (r) {
-          return r.json();
-        })
+      // the Shabbat* calls set absolute values, so repeating one is harmless
+      dev("/rpc/Script." + method, { method: "POST", body: JSON.stringify(params) }, true)
         .then(function (j) {
           if (j && j.code !== undefined && j.message !== undefined && !j.cfg && !j.w) {
             S.err = j.message;
@@ -1151,9 +1201,7 @@ if (typeof document !== "undefined")
     }
     function loadDiag() {
       function g(u) {
-        return fetch(u).then(function (r) {
-          return r.json();
-        });
+        return dev(u, undefined, true);
       }
       Promise.all([
         g("/rpc/Shelly.GetDeviceInfo"),
@@ -1363,19 +1411,17 @@ if (typeof document !== "undefined")
     // ---------- full schedule: decoded in the browser from the controller's own code ----------
     // (Script.GetCode is served by the firmware: no memory cost for the controller)
     var A64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+-";
-    // A script's code via Script.GetCode in 4 KB pieces, up to 4 at a time - the same pattern
-    // as the loader in main.js (fast, small memory spikes on the device). The built scripts are
+    // A script's code via Script.GetCode in 4 KB pieces, asked 4 at a time (dev keeps at most
+    // 2 in flight) - the same pattern as the loader in main.js (fast, small memory spikes on the device). The built scripts are
     // ASCII, so offsets in bytes are offsets in characters.
     function readCode(id) {
       function piece(o) {
-        return fetch("/rpc/Script.GetCode?id=" + id + "&len=4096&offset=" + o)
-          .then(function (r) {
-            return r.json();
-          })
-          .then(function (j) {
+        return dev("/rpc/Script.GetCode?id=" + id + "&len=4096&offset=" + o, undefined, true).then(
+          function (j) {
             if (j.data === undefined) throw new Error(j.message || "GetCode");
             return j;
-          });
+          }
+        );
       }
       return piece(0).then(function (first) {
         var n = first.data.length + first.left,
@@ -1430,16 +1476,16 @@ if (typeof document !== "undefined")
       return x[3] === y[3] ? 0 : x[3] < y[3] ? -1 : 1;
     }
     // a firmware RPC; an error reply ({code, message}) becomes a rejected promise. Network
-    // failures reject with a TypeError (fetch), which putCode tells apart.
+    // failures and proxy error pages reject with a TypeError, which putCode tells apart.
     function devRpc(method, params) {
-      return fetch("/rpc/" + method, { method: "POST", body: JSON.stringify(params || {}) })
-        .then(function (r) {
-          return r.json();
-        })
-        .then(function (j) {
+      // no automatic retry: a repeated PutCode append would duplicate code (putCode retries
+      // itself, after checking what arrived); queued like every other device request
+      return dev("/rpc/" + method, { method: "POST", body: JSON.stringify(params || {}) }).then(
+        function (j) {
           if (j && j.code !== undefined && j.message !== undefined) throw new Error(j.message);
           return j;
-        });
+        }
+      );
     }
     // what Script.PutCode accepts as-is: built scripts are ASCII (see AGENTS.md), and only tab
     // and newline as control characters, so JSON.stringify adds no \u escapes (PutCode rejects
@@ -1551,7 +1597,8 @@ if (typeof document !== "undefined")
           function (e) {
             if (!(e instanceof TypeError) || ++fails > 5) throw e; // a device error: give up
             if (i === 0) return next(); // the first piece replaces the code: safe to resend
-            return devRpc("Script.GetCode", { id: id, offset: 0, len: 1 }).then(function (j) {
+            var q = "/rpc/Script.GetCode?id=" + id + "&offset=0&len=1";
+            return dev(q, undefined, true).then(function (j) {
               var have = j.data.length + j.left;
               i = have === i || have === i + piece.length ? have : 0;
               return next();

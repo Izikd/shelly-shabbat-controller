@@ -54,8 +54,11 @@ const listening = (proc) =>
   await toSvc(page);
   const errors = [];
   page.on("pageerror", (e) => errors.push(e.message));
+  let refusing = false; // while the test makes the mock refuse requests on purpose
   page.on("console", (m) => {
-    if (m.type() === "error") errors.push(m.text());
+    if (m.type() !== "error") return;
+    if (refusing && /^Failed to load resource/.test(m.text())) return;
+    errors.push(m.text());
   });
   let fails = 0;
   const check = (c, m) => {
@@ -84,6 +87,36 @@ const listening = (proc) =>
     listCalls.length === 0,
     "loader used the page script id from the controller (no Script.List)"
   );
+  // the device has only a few free connections (the mock: 3); the page stays within them
+  const mock = (p) => fetch(`http://localhost:${PORT}/mock/` + p).then((r) => r.json());
+  let ms = await mock("stats");
+  check(
+    ms.refused === 0 && ms.maxInFlight <= 2,
+    "page load within 2 connections: " + JSON.stringify(ms)
+  );
+  // the old loader's burst of 7 requests is refused in part (the bug this guards against)
+  refusing = true;
+  const burst = await page.evaluate(() =>
+    Promise.all(
+      [0, 1, 2, 3, 4, 5, 6].map((i) =>
+        fetch("/rpc/Script.GetCode?id=2&len=4096&offset=" + i * 4096).then(
+          (r) => r.status,
+          () => "failed"
+        )
+      )
+    )
+  );
+  check(
+    burst.some((x) => x !== 200),
+    "mock refuses a 7-request burst: " + burst.join(",")
+  );
+  // refused requests (a dropped connection, a proxy's 502 page) are retried: the page loads
+  await mock("refuse?n=3");
+  await page.reload();
+  await page.waitForSelector("text=הפעלה הבאה של הממסר");
+  ms = await mock("stats");
+  check(ms.refused >= 3 + 1, "refused requests during the reload: " + JSON.stringify(ms));
+  refusing = false;
   const statusTxt = await page.textContent("main");
   check(
     /שבת/.test(statusTxt) && /ו׳ 06\/11 16:30/.test(statusTxt),

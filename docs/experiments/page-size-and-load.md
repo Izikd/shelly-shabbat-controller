@@ -75,6 +75,33 @@ per round trip). Entries are dated, newest last; keep the method so a test can b
   1.86 s over 7 cold loads (range 1.73-3.88 s); controller `mem_used` 14,238 / `mem_peak`
   16,184 unchanged; no reboot.
 
+## 2026-11-06 - Page fails to load with other windows open: 2 requests at a time
+- **Question**: the owner's phone (and then desktop Chrome, and the LAN address) showed "UI
+  load failed: Unexpected token '<', "<!DOCTYPE "... is not valid JSON" / "Failed to fetch".
+  Why, and what should the loader do?
+- **Method**: Pro 1, fw 2.0.3, controller v0.2.0, through the tunnel, while the owner had
+  several windows of the device open. Playwright loads (Pixel 7, Galaxy S9+, desktop Chrome)
+  logging every non-JSON answer; then rounds of N parallel 4 KB `GetCode` reads of
+  `shabbat_ui` (7 reads = the page plus one, like a load), 5 loads per strategy.
+- **Result**: loads failed 3 times in 4 on every browser; failed requests were Cloudflare
+  502 pages (see `../device/network.md`).
+| Requests at a time | Failed requests (of 35) | Load of 7 reads, median (range) |
+|---|---|---|
+| 1 | 0 | 2.45 s (2.27-3.35) |
+| 2 | 0 | 2.08 s (1.67-3.03) |
+| 3 | 7 | 2.81 s (1.95-3.69) |
+| 4 | 13-16 | 2.77-2.96 s |
+| 7 at once, failed ones retried | 21-24 | 2.16-2.53 s (1.39-4.58) |
+  Closing most of the open windows made the page load again (owner).
+- **Reading**: the device's few connections are shared with every other client; the earlier
+  entry's 6 parallel reads worked only because few were in use. Two at a time never failed
+  and was as fast as any other strategy here, because the tunnel's latency dominates.
+- **Decision** (owner): supersedes "6 reads in the first round". The loader and the page
+  keep at most 2 requests in flight (a queue) and retry a failed or non-JSON request up to 3
+  times (300, 800, 1300 ms); code uploads are not retried blindly. Cost: the loader text in
+  the controller grew by ~380 bytes (script memory); page 23,826 bytes. Not yet checked on
+  hardware.
+
 ## Ideas not tried yet
 - Inline the first status into the HTML (saves one round trip; costs controller work per
   request).
