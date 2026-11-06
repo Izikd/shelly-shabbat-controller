@@ -6,7 +6,7 @@
 """Upgrade the Shabbat controller scripts on a Shelly over its RPC API.
 
     python3 tools/deploy.py 192.168.1.50
-    python3 tools/deploy.py shelly-1-pro-2.example.com --password secret
+    python3 tools/deploy.py shelly.example.com --password secret
     python3 tools/deploy.py 192.168.1.50 --dry-run      # only show what would change
     python3 tools/deploy.py 192.168.1.50 --release latest   # install a GitHub release
 
