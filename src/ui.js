@@ -21,6 +21,9 @@ if (typeof document !== "undefined")
     var UI_BUILT = builtAt(UI_STAMP);
     var ID = window.SE_ID,
       TZ = "Asia/Jerusalem";
+    // schedule service for the public page (service/ in this repository); a page created on
+    // a device keeps the address it was created with (stored on the device)
+    var PUB_URL = "https://shabbat-schedule.izikdd.workers.dev";
     var S = {
       tab: "status",
       timers: [],
@@ -34,7 +37,12 @@ if (typeof document !== "undefined")
       tbl: null,
       tblErr: "",
       tblHol: false,
-      tblPast: false
+      tblPast: false,
+      pub: null, // publishing state from the device (ShabbatPub)
+      pubName: null, // page name typed / loaded from the service
+      pubBusy: false,
+      pubErr: "",
+      copied: false
     };
 
     // ---------- languages ----------
@@ -202,7 +210,25 @@ if (typeof document !== "undefined")
         unsaved: "יש שינויים שלא נשמרו",
         discard: "בטל",
         saved: "נשמר במכשיר ✓",
-        save: "שמור במכשיר"
+        save: "שמור במכשיר",
+        pub: "פרסום לוח הזמנים",
+        pubHint:
+          "דף לקריאה בלבד עם זמני ההפעלה בשבתות ובחגים הקרובים, לשיתוף עם אחרים. המכשיר שולח את הזמנים ל-{0} פעם ביום ואחרי כל שינוי.",
+        pubName: "שם הדף",
+        pubNamePh: "למשל: מעלית בניין הרצל 5",
+        pubCreate: "צור דף",
+        pubWait: "רגע…",
+        pubLink: "הקישור לשיתוף",
+        pubCopy: "העתק",
+        pubCopied: "הועתק ✓",
+        pubLast: "נשלח לאחרונה: {0}",
+        pubNever: "עוד לא נשלח",
+        pubFail: "השליחה האחרונה נכשלה ({0}). המכשיר ינסה שוב אוטומטית.",
+        pubSend: "שלח עכשיו",
+        pubRename: "שמור שם",
+        pubStop: "הפסק פרסום",
+        pubStopQ: "להפסיק את הפרסום ולמחוק את הדף? הקישור יפסיק לעבוד.",
+        pubNet: "אין חיבור לשירות הפרסום: {0}"
       },
       en: {
         dir: "ltr",
@@ -359,7 +385,25 @@ if (typeof document !== "undefined")
         unsaved: "Unsaved changes",
         discard: "Discard",
         saved: "Saved to device ✓",
-        save: "Save to device"
+        save: "Save to device",
+        pub: "Public schedule page",
+        pubHint:
+          "A read-only page with the on times for the coming Shabbatot and holidays, to share with others. The device sends the times to {0} once a day and after every change.",
+        pubName: "Page name",
+        pubNamePh: "e.g. Herzl 5 elevator",
+        pubCreate: "Create page",
+        pubWait: "One moment…",
+        pubLink: "Link to share",
+        pubCopy: "Copy",
+        pubCopied: "Copied ✓",
+        pubLast: "Last sent: {0}",
+        pubNever: "Not sent yet",
+        pubFail: "The last send failed ({0}). The device will retry automatically.",
+        pubSend: "Send now",
+        pubRename: "Save name",
+        pubStop: "Stop publishing",
+        pubStopQ: "Stop publishing and delete the page? The link will stop working.",
+        pubNet: "Cannot reach the publishing service: {0}"
       }
     };
     var LANG_KEY = "shabbat_lang"; // per browser; the device does not store it
@@ -758,10 +802,207 @@ if (typeof document !== "undefined")
           ),
           st.test ? h("div", { cls: "warn" }, tr(L.testActive, full(st.test))) : null
         ),
+        viewPub(),
         viewLog(),
         viewUpdate(),
         viewDiag()
       ];
+    }
+
+    // ---------- public schedule page (service/; the device sends, the browser sets it up) ----------
+    function svc(base, method, path, body, key) {
+      var o = { method: method, headers: {} };
+      if (body) {
+        o.headers["Content-Type"] = "application/json";
+        o.body = JSON.stringify(body);
+      }
+      if (key) o.headers.Authorization = "Bearer " + key;
+      return fetch(base + path, o).then(function (r) {
+        if (r.status === 204) return {};
+        return r.json().then(function (j) {
+          if (!r.ok) throw new Error(j.error || "HTTP " + r.status);
+          return j;
+        });
+      });
+    }
+    function pubFail(e) {
+      S.pubBusy = false;
+      S.pubErr = tr(L.pubNet, e.message);
+      render();
+    }
+    function loadPub() {
+      rpc("ShabbatPub", {}, function (j) {
+        S.pub = j;
+        if (j.on && S.pubName === null) {
+          S.pubName = "";
+          svc(j.u, "GET", "/s/" + j.i + ".json")
+            .then(function (d) {
+              S.pubName = d.name || "";
+              render();
+            })
+            .catch(function () {});
+        }
+        render();
+      });
+    }
+    function pubCreate() {
+      S.pubBusy = true;
+      S.pubErr = "";
+      render();
+      svc(PUB_URL, "POST", "/api/register", { name: S.pubName || "" })
+        .then(function (r) {
+          rpc("ShabbatPub", { u: PUB_URL, i: r.id, k: r.key }, function (j) {
+            S.pubBusy = false;
+            S.pub = j;
+            render();
+            setTimeout(loadPub, 3000); // the first send takes a moment
+          });
+        })
+        .catch(pubFail);
+    }
+    function pubRename() {
+      var p = S.pub;
+      S.pubBusy = true;
+      S.pubErr = "";
+      render();
+      svc(p.u, "PUT", "/api/s/" + p.i + "/name", { name: S.pubName || "" }, p.k)
+        .then(function () {
+          S.pubBusy = false;
+          S.flash = L.saved;
+          render();
+          setTimeout(function () {
+            S.flash = "";
+            render();
+          }, 2500);
+        })
+        .catch(pubFail);
+    }
+    function pubStop() {
+      var p = S.pub;
+      if (!confirm(L.pubStopQ)) return;
+      S.pubBusy = true;
+      S.pubErr = "";
+      render();
+      // the device stops even if the service cannot be reached (it deletes unused pages later)
+      svc(p.u, "DELETE", "/api/s/" + p.i, null, p.k)
+        .catch(function (e) {
+          S.pubErr = tr(L.pubNet, e.message);
+        })
+        .then(function () {
+          rpc("ShabbatPub", { off: true }, function (j) {
+            S.pubBusy = false;
+            S.pub = j;
+            S.pubName = null;
+            render();
+          });
+        });
+    }
+    function copyLink(link) {
+      function done() {
+        S.copied = true;
+        render();
+        setTimeout(function () {
+          S.copied = false;
+          render();
+        }, 2000);
+      }
+      // the clipboard API needs https; the device page is usually http
+      if (navigator.clipboard && window.isSecureContext)
+        return navigator.clipboard.writeText(link).then(done);
+      var el = document.getElementById("plink");
+      el.select();
+      if (document.execCommand("copy")) done();
+    }
+    function viewPub() {
+      var p = S.pub;
+      var box = h(
+        "div",
+        { cls: "card col" },
+        h("b", null, L.pub),
+        h(
+          "span",
+          { cls: "s" },
+          tr(
+            L.pubHint,
+            // LRI ... PDI keeps the address in one piece inside Hebrew text
+            "\u2066" + (p && p.on ? p.u : PUB_URL).replace(/^https?:\/\//, "") + "\u2069"
+          )
+        )
+      );
+      if (!p) return box;
+      if (S.pubErr) add(box, h("div", { cls: "warn" }, S.pubErr));
+      var name = [
+        h("label", { cls: "lab", for: "pn" }, L.pubName),
+        h("input", {
+          id: "pn",
+          maxlength: 60,
+          placeholder: L.pubNamePh,
+          value: S.pubName || "",
+          oninput: function (e) {
+            S.pubName = e.target.value;
+          }
+        })
+      ];
+      if (!p.on) {
+        add(box, [
+          name,
+          h(
+            "button",
+            { cls: "btn pri", disabled: S.pubBusy, onclick: pubCreate },
+            S.pubBusy ? L.pubWait : L.pubCreate
+          )
+        ]);
+        return box;
+      }
+      var link = p.u + "/s/" + p.i;
+      add(box, [
+        h("span", { cls: "lab" }, L.pubLink),
+        h(
+          "div",
+          { cls: "line" },
+          h("input", { id: "plink", cls: "grow", readonly: true, dir: "ltr", value: link }),
+          h(
+            "button",
+            {
+              cls: "btn",
+              onclick: function () {
+                copyLink(link);
+              }
+            },
+            S.copied ? L.pubCopied : L.pubCopy
+          )
+        ),
+        h(
+          "a",
+          { href: link, target: "_blank", rel: "noopener", cls: "qr" },
+          h("img", { src: link + "/qr.svg", alt: link, width: 168, height: 168 })
+        ),
+        h("span", { cls: "s" }, p.ok ? tr(L.pubLast, full(p.ok)) : L.pubNever),
+        p.err ? h("div", { cls: "warn" }, tr(L.pubFail, p.err)) : null,
+        name,
+        h(
+          "div",
+          { cls: "line wrap" },
+          h("button", { cls: "btn", disabled: S.pubBusy, onclick: pubRename }, L.pubRename),
+          h(
+            "button",
+            {
+              cls: "btn",
+              disabled: S.pubBusy,
+              onclick: function () {
+                rpc("ShabbatPub", { send: true }, function (j) {
+                  S.pub = j;
+                  render();
+                  setTimeout(loadPub, 3000);
+                });
+              }
+            },
+            L.pubSend
+          ),
+          h("button", { cls: "btn danger", disabled: S.pubBusy, onclick: pubStop }, L.pubStop)
+        )
+      ]);
+      return box;
     }
 
     // ---------- relay event log (kept on the device) ----------
@@ -1862,6 +2103,9 @@ if (typeof document !== "undefined")
       .warn.col { display: flex; flex-direction: column; gap: 6px }
       .wrap { flex-wrap: wrap }
       .lnk { font-size: 14px; color: #1D4ED8; padding: 0 4px }
+      .grow { flex: 1; min-width: 0 }
+      .qr { align-self: center; line-height: 0 }
+      .qr img { border-radius: 8px; border: 1px solid #E2E6EC }
       button:focus-visible, input:focus-visible { outline: 2px solid #1D4ED8; outline-offset: 2px }
     `;
     document.head.appendChild(h("style", null, css));
@@ -1869,5 +2113,9 @@ if (typeof document !== "undefined")
     refresh();
     preview();
     loadBeta();
-    setInterval(refresh, 15000);
+    loadPub();
+    setInterval(function () {
+      refresh();
+      if (S.tab === "status" && S.pub && S.pub.on) loadPub();
+    }, 15000);
   })();

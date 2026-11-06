@@ -16,7 +16,10 @@ is `docs/README.md`. Keeping these notes current is part of every change: see
   docs index, links and paths, `tools/release_notes.sh` writes a release's notes
 - `test/` simulator (`sim.js`), fallback decoder (`inflate_test.js`), Playwright test of the
   page against a mock device (`ui_test.js` + `mockdevice.js`, which also uploads and restarts
-  scripts for the update test; `stamp.js` re-stamps a build with a version)
+  scripts for the update test, and runs the schedule service; `stamp.js` re-stamps a build
+  with a version), the service on Node with an in-memory D1 (`service_test.mjs` +
+  `fake_d1.mjs`)
+- `service/` schedule service for public pages (Cloudflare Worker + D1), `service/README.md`
 - `library/manifest.json` Shelly script library manifest; `build.mjs` checks it and copies it
   to `dist/`, the release workflow publishes it with the scripts to the `library` branch
   (stable versions) or `library-beta` (pre-releases such as `v0.2.0-beta.1`)
@@ -63,7 +66,7 @@ The owner works in stages and says when to move on; do not run ahead of the curr
 
 ### Checks, releases, commits
 - Before pushing: `npm run format` and `npm test` (builds, checks the docs' links and
-  index, then all three test suites). CI runs the same checks plus `npm run check:table`.
+  index, then all four test suites). CI runs the same checks plus `npm run check:table`.
 - Releases are prototypes: `v0.x.y` (first `v0.1.0`), no `v1.0.0` until the owner says so.
   Never push a `v*` tag or run the Release workflow unless asked; the owner picks the
   version. Cloud sessions cannot push tags (403): release by running the workflow with the
@@ -100,6 +103,7 @@ npm run build                   # dist/ only
 uv run tools/deploy.py <host> --build   # build and install on a device
 uv run tools/deploy.py <host> --dry-run # what would change
 npm run check:table             # table still matches hdate (needs uv)
+npm run service:deploy          # deploy service/ (needs a Cloudflare API token)
 ```
 The browser test needs Chromium for Playwright (`npx playwright install chromium`). If a
 Playwright browser is preinstalled (`PLAYWRIGHT_BROWSERS_PATH`), keep the pinned `playwright`
@@ -132,6 +136,9 @@ Each has a reason in `docs/device/` and `docs/experiments/`.
   save) if `t` does not pass its `validTimer` (exactly 6 integers per timer). So add new
   settings as new top-level fields, never change the shape of a timer or the meaning of an
   existing field; if a change cannot avoid it, say so in that release's notes.
+- **Publishing is optional and one request at a time**: the controller sends only when set up
+  (KVS `shabbat_pub`), assembles the body as a string per send, and the service replies 204
+  with no body. Never let the relay depend on it.
 - **`shabbat_ui` never runs on the device**; it only stores the page code. deploy.py keeps it
   stopped and disabled.
 - **Mocks must behave like the device** (`test/mockdevice.js`, `test/sim.js`): byte-range
@@ -170,13 +177,16 @@ messages, CI logs and workflow artifacts, can be read by anyone and is hard to t
   never reaches stable users. Only `.github/workflows/release.yml` writes them, from a tested tag build;
   never push to `library` / `library-beta` or edit a release by hand, and never push a `v*` tag or run the
   Release workflow unless asked. Workflow inputs reach scripts only through `env`.
-- **No new runtime dependencies or network calls in the scripts**: the controller talks only
-  to the device, and the page too, with one exception chosen by the owner - the
-  **Check for updates** button, which reads the `library` (and with beta on, `library-beta`)
-  branch from
-  `raw.githubusercontent.com` only when pressed (never on load or on a timer; `ui_test.js`
-  checks that no GitHub request is made before the click). A new devDependency must be
-  pinned in `package-lock.json`.
+- **No new runtime dependencies or network calls in the scripts**, apart from two the owner
+  chose:
+  - the page's **Check for updates** button, which reads the `library` (and with beta on,
+    `library-beta`) branch from `raw.githubusercontent.com` only when pressed (never on load
+    or on a timer; `ui_test.js` checks that no GitHub request is made before the click);
+  - **publishing to the schedule service** (`service/`), off until the owner of a device sets
+    it up on the page: then the controller sends the coming windows (one `HTTP.Request` at a
+    time, see the rule above) and the page talks to the service to register, rename, stop and
+    show the page's name. Without it, nothing leaves the device.
+  A new devDependency must be pinned in `package-lock.json`.
 
 ## Working with a real device
 - `deploy.py` uploads only what changed (ignoring the build time), verifies by reading back,

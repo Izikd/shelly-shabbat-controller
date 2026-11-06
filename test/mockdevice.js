@@ -7,6 +7,8 @@
 //   Script.PutCode / Stop / Start / GetStatus, like the device: a running script's code cannot
 //   be replaced, and Start runs the uploaded code in a fresh VM (KVS kept)
 // Params come from the query string or a JSON body, as on the device.
+// It also runs the schedule service (service/src, in-memory database) on port + 1, and the
+// script's HTTP.Request calls to the real service address (PUB_URL in src/ui.js) go there.
 // Usage: node test/mockdevice.js [port] [unix-time] [version stamped into the controller]
 "use strict";
 const fs = require("fs"),
@@ -26,6 +28,10 @@ if (process.argv[4]) {
 }
 const port = +process.argv[2] || 8099;
 let now = +process.argv[3] || Math.floor(Date.now() / 1000);
+const PUB_URL = fs
+  .readFileSync(path.join(ROOT, "src/ui.js"), "utf8")
+  .match(/PUB_URL = "([^"]+)"/)[1];
+const SVC = "http://localhost:" + (port + 1);
 const dev = { relay: false, kvs: {}, rpc: {}, endpoints: {}, pending: [], timers: [] };
 // stored script code (bytes) and state; script 1 is the controller
 const scripts = {
@@ -55,7 +61,18 @@ const makeSandbox = () => ({
         if (p.key in dev.kvs) res = { value: dev.kvs[p.key] };
         else err = -105;
       } else if (m === "KVS.Set") dev.kvs[p.key] = p.value;
-      else if (m === "Script.List")
+      else if (m === "KVS.Delete") delete dev.kvs[p.key];
+      else if (m === "HTTP.Request") {
+        const url = p.url.indexOf(PUB_URL) === 0 ? SVC + p.url.slice(PUB_URL.length) : p.url;
+        fetch(url, { method: p.method, headers: p.headers, body: p.body })
+          .then((r) => r.text().then((body) => ({ code: r.status, message: r.statusText, body })))
+          .then(
+            (r) => cb && cb(r, 0, ""),
+            (e) => cb && cb(null, -114, "" + e)
+          )
+          .then(flush);
+        return;
+      } else if (m === "Script.List")
         res = {
           scripts: [
             { id: 1, name: "shabbat_controller" },
@@ -117,6 +134,31 @@ function json(res, code, obj) {
   res.writeHead(code, { "Content-Type": "application/json" });
   res.end(JSON.stringify(obj));
 }
+// the schedule service, as on Cloudflare (service/src) with an in-memory D1
+Promise.all([import("../service/src/index.js"), import("./fake_d1.mjs")]).then(([svc, d1]) => {
+  const env = { DB: d1.fakeD1() };
+  http
+    .createServer((req, res) => {
+      let body = [];
+      req.on("data", (c) => body.push(c));
+      req.on("end", async () => {
+        const hasBody = req.method !== "GET" && req.method !== "HEAD";
+        const r = await svc.route(
+          new Request(SVC + req.url, {
+            method: req.method,
+            headers: req.headers,
+            body: hasBody ? Buffer.concat(body) : undefined
+          }),
+          env,
+          now
+        );
+        res.writeHead(r.status, Object.fromEntries(r.headers));
+        res.end(Buffer.from(await r.arrayBuffer()));
+      });
+    })
+    .listen(port + 1);
+});
+
 http
   .createServer((req, res) => {
     const u = new URL(req.url, "http://x");

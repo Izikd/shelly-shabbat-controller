@@ -2,7 +2,8 @@
 // Usage: node test/ui_test.js <outdir>
 "use strict";
 let srvRef = null,
-  srv2Ref = null;
+  srv2Ref = null,
+  browserRef = null;
 const { chromium } = require("playwright");
 const { spawn } = require("child_process");
 const path = require("path");
@@ -10,9 +11,13 @@ const fs = require("fs");
 const { restamp } = require("./stamp");
 const out = process.argv[2] || ".";
 const PORT = 8099;
-const PORT2 = 8098; // a second mock device, for the update test
+const PORT2 = 8096; // a second mock device, for the update test (its service: 8097)
 const LIB = "https://raw.githubusercontent.com/Izikd/shelly-shabbat-controller/";
 const NOW = 1793731800; // Tue 03/11/2026 20:50 Israel
+const PUB_URL = require("fs")
+  .readFileSync(path.join(__dirname, "../src/ui.js"), "utf8")
+  .match(/PUB_URL = "([^"]+)"/)[1];
+const SVC = "http://localhost:" + (PORT + 1); // the mock device runs the service there
 
 // resolves once the mock prints that it listens (the controller logs to stdout before that)
 const listening = (proc) =>
@@ -32,7 +37,7 @@ const listening = (proc) =>
     { stdio: ["ignore", "pipe", "inherit"] }
   ));
   await listening(srv);
-  const browser = await chromium.launch();
+  const browser = (browserRef = await chromium.launch());
   const page = await browser.newPage({
     viewport: { width: 390, height: 844 },
     deviceScaleFactor: 2,
@@ -40,6 +45,13 @@ const listening = (proc) =>
     locale: "he-IL" // Hebrew browser -> Hebrew page on first visit
   });
   page.setDefaultTimeout(8000);
+  // the real service address -> the local copy of the service
+  const toSvc = (p) =>
+    p.route(PUB_URL + "/**", async (route) => {
+      const u = route.request().url().replace(PUB_URL, SVC);
+      route.fulfill({ response: await route.fetch({ url: u }) });
+    });
+  await toSvc(page);
   const errors = [];
   page.on("pageerror", (e) => errors.push(e.message));
   page.on("console", (m) => {
@@ -160,6 +172,47 @@ const listening = (proc) =>
   await page.click("text=מידע טכני");
   await page.waitForSelector("text=2.0.3");
   await page.screenshot({ path: path.join(out, "7c-log-diag.png"), fullPage: true });
+
+  // public schedule page: create, the device sends, view, rename, stop
+  await page.fill("#pn", "מעלית הרצל 5");
+  await page.click("text=צור דף");
+  await page.waitForSelector("text=הקישור לשיתוף");
+  const link = await page.inputValue("#plink");
+  check(new RegExp("^" + PUB_URL + "/s/[a-z2-9]{10}$").test(link), "page link: " + link);
+  await page.waitForSelector("text=נשלח לאחרונה", { timeout: 10000 });
+  await page.locator(".qr img").scrollIntoViewIfNeeded();
+  await page.screenshot({ path: path.join(out, "7d-publish.png") });
+  const pubSt = await api("ShabbatPub");
+  check(
+    (pubSt.on && pubSt.ok === NOW) || pubSt.ok > NOW - 60,
+    "device sent the schedule: " + JSON.stringify(pubSt)
+  );
+  const pubPage = await browser.newPage({ locale: "he-IL", deviceScaleFactor: 2 });
+  await toSvc(pubPage);
+  await pubPage.goto(link);
+  const pubTxt = await pubPage.textContent("body");
+  check(
+    /מעלית הרצל 5/.test(pubTxt) && /ו׳ 06\/11 16:30 ← ש׳ 07\/11 17:25/.test(pubTxt),
+    "public page shows the next Shabbat: " + pubTxt.slice(0, 160)
+  );
+  check(/12:30–13:30/.test(pubTxt) && /16:45–17:15/.test(pubTxt), "public page ON times");
+  await pubPage.screenshot({ path: path.join(out, "10-public.png"), fullPage: true });
+  await pubPage.click("text=English");
+  await pubPage.waitForSelector("text=Fri 06/11 16:30 → Sat 07/11 17:25");
+  await pubPage.screenshot({ path: path.join(out, "10-public-en.png"), fullPage: true });
+  await pubPage.close();
+  await page.fill("#pn", "Herzl 5");
+  await page.click("text=שמור שם");
+  await page.waitForSelector("text=נשמר במכשיר");
+  // straight to the local service (a 404 in the page would count as a page error)
+  const svcGet = (p) =>
+    fetch(p.replace(PUB_URL, SVC)).then((r) => (r.status === 200 ? r.json() : r.status));
+  check((await svcGet(link + ".json")).name === "Herzl 5", "renamed on the service");
+  page.once("dialog", (d) => d.accept());
+  await page.click("text=הפסק פרסום");
+  await page.waitForSelector("text=צור דף");
+  check((await svcGet(link + ".json")) === 404, "page deleted on the service");
+  check(!(await api("ShabbatPub")).on, "device stopped publishing");
 
   // full schedule tab
   await page.click("role=tab[name='לוח זמנים']");
@@ -467,5 +520,6 @@ const listening = (proc) =>
     try {
       srvRef && srvRef.kill();
       srv2Ref && srv2Ref.kill();
+      browserRef && browserRef.close();
     } catch (x) {}
   });

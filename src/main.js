@@ -13,6 +13,8 @@
 //   ShabbatGet                 -> {cfg, st}
 //   ShabbatSet {timers?, auto?, skip?, test?}  -> {cfg, st}   (validated, saved)
 //   ShabbatPreview {timers?, n?} -> {w: [{t, k, s, e, skip, on: [[s, e, "1+3"]]}]}
+//   ShabbatPub {u?, i?, k?, off?, send?} -> {on, u, i, k, ok, err, due, busy}
+//     publishing to the schedule service (service/): set it up / stop / send now / state
 //
 // Timer: [anchor, value, duration, applies, days, enabled]
 //   anchor   0 = candle lighting (value = minutes after window start, 0..180)
@@ -33,6 +35,8 @@ let CFG = {
   // them would drop the saved timers and log
   logKey: "shabbat_elev_log",
   logMax: 15,
+  pubKey: "shabbat_pub", // publishing settings {u, i, k} (absent = not published)
+  pubN: 6, // windows sent to the schedule service
   tag: "shabbat", // Switch.Set tag: tells our commands from manual ones
   maxTimers: 12,
   debug: false,
@@ -341,6 +345,7 @@ function winInfo(w) {
 
 function tick() {
   if (!cfg) return;
+  pubCheck();
   let t = getNow();
   let auto = cfg.a !== 0;
   let sw = Shelly.getComponentStatus("switch", CFG.switchId);
@@ -473,6 +478,7 @@ function doSet(req, params) {
       return;
     }
     saveCfg();
+    pubSoon(30);
   }
   replyQ.push(req);
   kickTick();
@@ -544,6 +550,159 @@ function onRpcSet(req, params) {
 }
 function onRpcPreview(req, params) {
   enqueue(doPreview, req, params);
+}
+function onRpcPub(req, params) {
+  enqueue(doPub, req, params);
+}
+
+// ---------------- Publishing (optional) ----------------
+// Set up from the settings page, which registers with the schedule service (service/) and
+// passes its page id and write key here. The controller then sends the next windows and
+// their ON times (pubBody) once a day, a few seconds after every settings change, and after
+// a restart. The service shows them on a public read-only page. Nothing is sent without it;
+// the relay never depends on it. One HTTP request at a time; the reply is empty (204).
+let pub = null; // {u: service URL, i: page id, k: write key}
+let pubBusy = false;
+let pubDue = 0; // UTC s of the next send (0 = once the clock is synced)
+let pubFails = 0;
+let pubOk = 0; // UTC s of the last successful send
+let pubErr = ""; // why the last send failed
+
+// the device clock, ignoring test time (the public page shows the real schedule)
+function realNow() {
+  let sys = Shelly.getComponentStatus("sys");
+  if (!sys || !sys.unixtime) return 0;
+  return Math.floor(sys.unixtime);
+}
+
+// printable ASCII of length lo..hi, without quotes, backslashes or spaces
+function okStr(s, lo, hi) {
+  if (typeof s !== "string" || s.length < lo || s.length > hi) return false;
+  for (let i = 0; i < s.length; i++) {
+    let c = s.charCodeAt(i);
+    if (c < 33 || c > 126 || c === 34 || c === 92) return false;
+  }
+  return true;
+}
+
+function validPub(p) {
+  if (!p || !okStr(p.u, 10, 100) || !okStr(p.i, 4, 32) || !okStr(p.k, 16, 64)) return false;
+  return p.u.indexOf("https://") === 0 || p.u.indexOf("http://") === 0;
+}
+
+function pubSoon(sec) {
+  let t = realNow();
+  let d = t ? t + sec : 0;
+  if (d < pubDue) pubDue = d;
+}
+
+function pubCheck() {
+  if (!pub || pubBusy) return;
+  let t = realNow();
+  if (!t || t < pubDue) return;
+  pubBusy = true;
+  Timer.set(100, false, pubSend);
+}
+
+// The schedule, as the service expects it (see service/src/index.js):
+// {v: 1, now, auto, w: [{t, k, s, e, x: skipped 0/1, on: [[s, e], ...]}]}
+// Assembled as a string, without building the objects first (script memory).
+function pubBody(t) {
+  let idx = findWin(t);
+  let out = '{"v":1,"now":' + t + ',"auto":' + (cfg.a !== 0 ? 1 : 0) + ',"w":[';
+  for (let n = 0; n < CFG.pubN; n++) {
+    let win = getWin(idx + n);
+    if (!win) break;
+    let x = win.s === cfg.s ? 1 : 0;
+    out += n ? "," : "";
+    out += '{"t":"' + win.title + '","k":' + win.k + ',"s":' + win.s + ',"e":' + win.e;
+    out += ',"x":' + x + ',"on":[';
+    let plan = x ? [] : windowPlan(win, cfg.t);
+    for (let i = 0; i < plan.length; i++) {
+      out += (i ? "," : "") + "[" + plan[i].s + "," + plan[i].e + "]";
+    }
+    out += "]}";
+  }
+  return out + "]}";
+}
+
+function pubSend() {
+  let t = realNow();
+  if (!pub || !t || !cfg) {
+    pubBusy = false;
+    return;
+  }
+  let p = {
+    method: "PUT",
+    url: pub.u + "/api/s/" + pub.i,
+    headers: { Authorization: "Bearer " + pub.k },
+    body: pubBody(t),
+    timeout: 20
+  };
+  Shelly.call("HTTP.Request", p, onPubSent);
+}
+
+function onPubSent(res, err, msg) {
+  pubBusy = false;
+  let t = realNow();
+  let code = res && res.code ? res.code : 0;
+  if (!err && code >= 200 && code < 300) {
+    pubOk = t;
+    pubErr = "";
+    pubFails = 0;
+    // daily, at a time that differs between devices
+    pubDue = t + 82800 + Math.floor(Math.random() * 7200);
+    return;
+  }
+  pubErr = err ? "" + msg : "HTTP " + code;
+  pubFails++;
+  // retry after 5, 20, 45, 80 ... minutes, at most 6 hours
+  let wait = 300 * pubFails * pubFails;
+  if (wait > 21600) wait = 21600;
+  pubDue = t + wait;
+  console.log("Publish failed:", pubErr);
+}
+
+function onPubSaved(res, err, msg) {
+  if (err) console.log("KVS save failed:", err, msg);
+}
+
+function pubState() {
+  return {
+    on: !!pub,
+    u: pub ? pub.u : "",
+    i: pub ? pub.i : "",
+    k: pub ? pub.k : "",
+    ok: pubOk,
+    err: pubErr,
+    due: pubDue,
+    busy: pubBusy
+  };
+}
+
+function doPub(req, params) {
+  if (params.off) {
+    pub = null;
+    pubErr = "";
+    pubOk = 0;
+    Shelly.call("KVS.Delete", { key: CFG.pubKey }, onPubSaved);
+  } else if (params.u !== undefined) {
+    let p = { u: params.u, i: params.i, k: params.k };
+    if (!validPub(p)) {
+      req.error(-1, "invalid publishing settings");
+      return;
+    }
+    pub = p;
+    pubOk = 0;
+    pubErr = "";
+    Shelly.call("KVS.Set", { key: CFG.pubKey, value: JSON.stringify(p) }, onPubSaved);
+  }
+  if (pub && (params.send || params.u !== undefined)) {
+    pubDue = 0;
+    pubFails = 0;
+    kickTick();
+  }
+  req.result(pubState());
 }
 
 // ---------------- UI loader page ----------------
@@ -627,6 +786,7 @@ let BOOT = [
     Script.addRpcHandler("ShabbatGet", onRpcGet);
     Script.addRpcHandler("ShabbatSet", onRpcSet);
     Script.addRpcHandler("ShabbatPreview", onRpcPreview);
+    Script.addRpcHandler("ShabbatPub", onRpcPub);
   },
   tick,
   function () {
@@ -666,6 +826,18 @@ function onKvsLoaded(res, err, msg) {
 function onLogLoaded(res, err) {
   if (!err && res && typeof res.value === "string" && res.value.length)
     logArr = res.value.split(",");
+  Shelly.call("KVS.Get", { key: CFG.pubKey }, onPubLoaded);
+}
+
+function onPubLoaded(res, err) {
+  if (!err && res && typeof res.value === "string") {
+    try {
+      let p = JSON.parse(res.value);
+      if (validPub(p)) pub = { u: p.u, i: p.i, k: p.k };
+    } catch (e) {
+      console.log("Bad publishing settings, ignored");
+    }
+  }
   Timer.set(50, false, bootNext);
 }
 

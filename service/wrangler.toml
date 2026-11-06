@@ -1,0 +1,19 @@
+# Cloudflare Worker of the schedule service. Deploy (see service/README.md):
+#   npm run service:deploy
+# The account comes from CLOUDFLARE_ACCOUNT_ID / the API token; a self-hosted copy changes
+# name and database_id here and PUB_URL in src/ui.js.
+name = "shabbat-schedule"
+main = "src/index.js"
+compatibility_date = "2026-10-01"
+workers_dev = true
+
+[[d1_databases]]
+binding = "DB"
+database_name = "shabbat-schedule"
+database_id = "4effce83-1eea-4242-a7ef-a45e826a2d0c"
+
+[triggers]
+crons = ["17 3 * * *"] # daily cleanup of abandoned pages (UTC)
+
+[observability]
+enabled = true
