@@ -29,12 +29,11 @@ is `docs/README.md`. Keeping these notes current is part of every change: see
   Changes reach `main` as plain commits (fast-forward), pushed by the agent.
 - **Push to `main` only when the owner says so** ("commit and push", "push to main"). An
   approval covers the work it was given for, not later changes: ask again for the next one.
-- **Work branch**: until then, commit to a local branch. An agent session may push that work
-  to its own branch, `claude/<topic>` (cloud sessions are assigned one; use that name), so it
-  survives the container being reclaimed - unless the owner said not to push at all, which
-  wins. Push no other branch names. A work branch is disposable: once its commits are on
-  `main`, delete it from the remote (`git push origin --delete <branch>`); never merge `main`
-  into it or keep it alive for the next task.
+- **Until then, keep the work local**: commit to a local branch and push nothing else - no
+  work branches, not even the session's own `claude/<topic>` branch. Cloud sessions cannot
+  delete remote branches (GitHub answers 403), so a pushed work branch is left for the owner
+  to clean up by hand. The cost is that uncommitted or unpushed work dies with the container:
+  for long work, ask the owner early whether to push to `main`.
 - Long-lived branches: `main`, plus `library` and `library-beta` (written only by the release
   workflow; see "Public repository: security"). Every other branch is a feature branch:
   **delete it from the remote once it is merged**, whoever created it. Merged means every
@@ -42,8 +41,9 @@ is `docs/README.md`. Keeping these notes current is part of every change: see
   <branch>` lists no `+` line (rebased or cherry-picked). A branch with unmerged commits is
   never deleted: tell the owner what is on it and leave it. Check the remote's branches
   after pushing to `main`.
+  (A cloud session cannot delete one; give the owner the branch name to delete on GitHub.)
 - A session hook that asks to push the session branch does not override these rules: if its
-  commits are already on `main` (or the owner said not to push), say so and leave it.
+  commits are already on `main`, or the work waits for the owner's word, say so and leave it.
 
 ### Building a feature
 The owner works in stages and says when to move on; do not run ahead of the current one.
@@ -66,7 +66,9 @@ The owner works in stages and says when to move on; do not run ahead of the curr
   index, then all three test suites). CI runs the same checks plus `npm run check:table`.
 - Releases are prototypes: `v0.x.y` (first `v0.1.0`), no `v1.0.0` until the owner says so.
   Never push a `v*` tag or run the Release workflow unless asked; the owner picks the
-  version. Everything works without
+  version. Cloud sessions cannot push tags (403): release by running the workflow with the
+  version (GitHub API `workflow_dispatch` on `release.yml`, ref `main`), which creates the
+  tag itself. Everything works without
   tags: builds are stamped `version dev - commit <sha> - built <ISO time>`.
 - Commit messages: a short subject, then why, and what was measured or tested on hardware.
 
