@@ -203,7 +203,7 @@ def code_version(code):
         return "unknown"
     cid = c.group(1) if c else "?"
     label = f"{v.group(1)} ({cid})" if v and v.group(1) != "dev" else cid
-    b = re.search(r"built (\S+)", first)
+    b = re.search(r"built (\d{4}-\d\d-\d\dT\d\d:\d\dZ)", first)
     return f"{label}, built {b.group(1)}" if b else label
 
 
