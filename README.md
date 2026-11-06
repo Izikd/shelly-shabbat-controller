@@ -3,7 +3,8 @@
 A Shabbat clock (שעון שבת) that runs on the Shelly itself: it switches the relay on during
 timers you set inside Shabbat & Yom Tov windows (candle lighting to havdalah, Israel,
 2025-2030, from an embedded table). Use it for anything on a relay - a Shabbat elevator,
-lights, a hot plate, air conditioning. No internet or cloud needed once the clock is synced.
+lights, a hot plate, air conditioning. No internet or cloud needed once the clock is synced
+(optionally, it can publish its schedule to a public read-only page - see below).
 Settings are edited on a web page served by the Shelly.
 
 Developed and tested on a **Shelly Pro 1** (firmware 2.0.3), where it drives a Shabbat elevator.
@@ -89,12 +90,20 @@ and Firefox 78+.
 - **Schedule**: every window in the table, by year, holidays-only filter, past windows.
 - **Forecast**: next 6 windows with merged ON times, computed by the device for the
   unsaved draft. Changes are applied only with "Save to device".
+- **Public schedule page** (optional, Status tab): "Create page" gives a permanent link (and a
+  QR code) to a read-only page with the on times of the next 6 windows, in Hebrew and English,
+  for neighbours, a building lobby or a WhatsApp group. No account is needed. The device sends
+  the times to the schedule service once a day, ~30 s after every change and after a restart;
+  the page warns when it has not heard from the device for two days. "Stop publishing" deletes
+  the page. The relay never depends on it. Service: `service/` (see `service/README.md`).
 
 ## Device API (Script.<method>, params include `id` = controller script id)
 - `ShabbatGet` -> `{cfg:{timers, auto, skip}, st:{now, test, synced, auto, relay, on, cur, next, nextOn, end}}`
 - `ShabbatSet {timers?, auto?, skip?, test?, resume?}` -> same as Get (validated, saved to KVS)
 - Get/Set also return `log` ("<minutes since base><1|0><cause>,...") and `base`
 - `ShabbatPreview {timers?, n?}` -> `{w:[{t, k, s, e, skip, on:[[s, e, "1+3"]]}], now}`
+- `ShabbatPub {u?, i?, k?, off?, send?}` -> `{on, u, i, k, ok, err, due, busy}`: publishing to
+  the schedule service (service URL, page id, write key; saved in KVS `shabbat_pub`)
 - Timer = `[anchor 0/1/2, value, duration, applies 0/1/2, days 0/1/2, enabled 0/1]`
 
 ## Development
@@ -146,6 +155,9 @@ the build time when comparing, so rebuilding the same commit does not re-upload.
 - `test/inflate_test.js` the fallback decoder against Node's zlib
 - `test/sim.js` device simulator (minute-by-minute relay sweep vs an independent reference)
 - `test/mockdevice.js` + `test/ui_test.js` fake Shelly + Playwright browser test of the page
+  (the mock also runs the schedule service, so publishing is tested end to end)
+- `service/` schedule service for the public pages (Cloudflare Worker + D1), tested by
+  `test/service_test.mjs` with an in-memory database (`test/fake_d1.mjs`)
 
 ## More documentation
 - `AGENTS.md` - how to work on the project (for AI agents and humans): workflow, commands,

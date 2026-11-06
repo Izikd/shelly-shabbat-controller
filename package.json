@@ -4,14 +4,17 @@
   "description": "Shabbat & Yom Tov relay controller for Shelly - build, format and test tooling",
   "scripts": {
     "build": "node tools/build.mjs",
-    "format": "prettier --write src test tools",
-    "format:check": "prettier --check src test tools",
-    "test": "npm run build && node test/inflate_test.js && node test/sim.js && node test/ui_test.js",
-    "check:table": "uv run tools/gen_table.py && git diff --exit-code -- src/table.js test/windows.json"
+    "format": "prettier --write src test tools service",
+    "format:check": "prettier --check src test tools service",
+    "test": "npm run build && node test/inflate_test.js && node test/sim.js && node --no-warnings test/service_test.mjs && node test/ui_test.js",
+    "check:table": "uv run tools/gen_table.py && git diff --exit-code -- src/table.js test/windows.json",
+    "service:schema": "npx --yes wrangler@4.153.0 d1 execute shabbat-schedule --remote --file service/schema.sql -c service/wrangler.toml",
+    "service:deploy": "npx --yes wrangler@4.153.0 deploy -c service/wrangler.toml"
   },
   "devDependencies": {
     "playwright": "1.63.0",
     "prettier": "3.9.10",
+    "qrcode-generator": "2.0.4",
     "terser": "5.51.2"
   }
 }

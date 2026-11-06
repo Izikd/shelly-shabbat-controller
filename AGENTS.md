@@ -14,11 +14,13 @@ is `docs/README.md`. Record new findings there, one file per topic.
   `tools/gen_table.py` regenerates the table with hdate
 - `test/` simulator (`sim.js`), fallback decoder (`inflate_test.js`), Playwright test of the
   page against a mock device (`ui_test.js` + `mockdevice.js`)
+- `service/` schedule service for public pages (Cloudflare Worker + D1), `service/README.md`
+- `test/` also: `service_test.mjs` (service on Node, in-memory D1 in `fake_d1.mjs`)
 - `.github/workflows/` CI on push/PR, releases on `v*` tags
 
 ## Workflow
 - Commit directly to `main`; no pull requests (the owner's preference). Push when done.
-- Before pushing: `npm run format` and `npm test` (builds, then all three test suites).
+- Before pushing: `npm run format` and `npm test` (builds, then all four test suites).
   CI runs the same checks plus `npm run check:table`.
 - Releases are not in use yet. Never push a `v*` tag unless asked. Everything works without
   tags: builds are stamped `version dev - commit <sha> - built <ISO time>`.
@@ -33,6 +35,7 @@ npm run build                   # dist/ only
 uv run tools/deploy.py <host> --build   # build and install on a device
 uv run tools/deploy.py <host> --dry-run # what would change
 npm run check:table             # table still matches hdate (needs uv)
+npm run service:deploy          # deploy service/ (needs a Cloudflare API token)
 ```
 The browser test needs Chromium for Playwright (`npx playwright install chromium`). If a
 Playwright browser is preinstalled (`PLAYWRIGHT_BROWSERS_PATH`), keep the pinned `playwright`
@@ -54,6 +57,9 @@ Each has a reason in `docs/device/` and `docs/experiments/`.
   Do not keep large strings around (assemble per request); check `mem_peak` after a deploy.
 - **KVS keys `shabbat_elev_cfg` / `shabbat_elev_log` keep their names** (old project name):
   renaming them loses users' timers and log.
+- **Publishing is optional and one request at a time**: the controller sends only when set up
+  (KVS `shabbat_pub`), assembles the body as a string per send, and the service replies 204
+  with no body. Never let the relay depend on it.
 - **`shabbat_ui` never runs on the device**; it only stores the page code. deploy.py keeps it
   stopped and disabled.
 - **Mocks must behave like the device** (`test/mockdevice.js`, `test/sim.js`): byte-range

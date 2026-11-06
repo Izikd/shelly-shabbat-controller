@@ -5,3 +5,5 @@ __pycache__/
 /*.png
 # build output: npm run build (releases attach it to GitHub Releases)
 dist/
+# wrangler local state
+.wrangler/

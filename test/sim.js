@@ -36,7 +36,10 @@ function makeDevice(opts) {
     pending: [],
     log: [],
     subs: 0,
-    dels: 0
+    dels: 0,
+    reqs: [], // HTTP.Request calls
+    httpReply: { code: 204, message: "No Content", headers: {}, body: "" },
+    httpErr: 0
   };
   dev.src = "init";
   dev.tag = null;
@@ -67,6 +70,18 @@ function makeDevice(opts) {
         if (method === "KVS.Get") {
           if (params.key in dev.kvs) res = { value: dev.kvs[params.key] };
           else err = -105;
+        } else if (method === "KVS.Delete") {
+          if (params.key in dev.kvs) {
+            delete dev.kvs[params.key];
+            res = {};
+          } else err = -105;
+        } else if (method === "HTTP.Request") {
+          // like the firmware: total request <= 8 KB, PUT/POST need a body
+          dev.reqs.push(JSON.parse(JSON.stringify(params)));
+          const size = params.url.length + (params.body || "").length + 200;
+          if (size > 8192 || (params.method === "PUT" && !params.body)) err = -103;
+          else if (dev.httpErr) err = dev.httpErr;
+          else res = JSON.parse(JSON.stringify(dev.httpReply));
         } else if (method === "KVS.Set") {
           if (String(params.value).length > 253) err = -1;
           else {
@@ -251,10 +266,12 @@ function refOn(t, timers, skipStart) {
       }
     };
   }
+  d.call("ShabbatPub", { u: "https://svc.example", i: "abcdefghjk", k: "k".repeat(24) });
   for (let t = 1762525200; t < 1762525200 + 2 * 86400; t += 600) {
     d.now = t;
     d.tick();
   }
+  check(d.reqs.length >= 1, "T0 publishing exercised");
   d.call("ShabbatSet", {
     timers: [
       [1, 600, 30, 0, 0, 1],
@@ -575,6 +592,124 @@ if (!process.env.QUICK) {
   dev.call("ShabbatSet", { test: SAT1200 + 60 });
   check(dev.relay === true && dev.toggleAfter === undefined, "no toggle_after in test mode");
   console.log("T6 auto-off, manual hold, log: OK");
+}
+
+// ---------- T7: publishing to the schedule service ----------
+{
+  const FRI = 1793961000; // Fri 06/11/2026 12:30 Israel
+  const dev = makeDevice({ now: FRI });
+  dev.tick();
+  check(dev.reqs.length === 0, "nothing sent before publishing is set up");
+  let r = dev.call("ShabbatPub", {});
+  check(r.ok && r.d.on === false, "pub state off");
+  for (const bad of [
+    { u: "ftp://x.example", i: "abcdefghij", k: "k".repeat(24) },
+    { u: "https://x.example", i: "ab", k: "k".repeat(24) },
+    { u: "https://x.example", i: "abcdefghij", k: "short" },
+    { u: 'https://x.example/"', i: "abcdefghij", k: "k".repeat(24) },
+    { u: "https://x.example", i: "abc defghij", k: "k".repeat(24) }
+  ]) {
+    r = dev.call("ShabbatPub", bad);
+    check(!r.ok, "rejects pub settings " + JSON.stringify(bad));
+  }
+  const P = { u: "https://svc.example", i: "abcdefghjk", k: "Key_-0123456789abcdefghij" };
+  r = dev.call("ShabbatPub", P);
+  check(r.ok && r.d.on && r.d.i === P.i && r.d.k === P.k, "pub set up");
+  check(JSON.parse(dev.kvs.shabbat_pub).i === P.i, "pub saved to KVS");
+  dev.flush();
+  check(dev.reqs.length === 1, "sent right away: " + dev.reqs.length);
+  let q = dev.reqs[0];
+  check(
+    q.method === "PUT" &&
+      q.url === "https://svc.example/api/s/abcdefghjk" &&
+      q.headers.Authorization === "Bearer " + P.k,
+    "request: " + q.method + " " + q.url
+  );
+  let b = JSON.parse(q.body);
+  const pv = dev.call("ShabbatPreview", { n: 6 }).d.w;
+  check(b.v === 1 && b.now === FRI && b.auto === 1 && b.w.length === 6, "body header");
+  check(
+    b.w.every(
+      (w, i) =>
+        w.s === pv[i].s &&
+        w.e === pv[i].e &&
+        w.t === pv[i].t &&
+        w.k === pv[i].k &&
+        w.x === 0 &&
+        JSON.stringify(w.on) === JSON.stringify(pv[i].on.map((o) => [o[0], o[1]]))
+    ),
+    "body windows match the forecast"
+  );
+  check(b.w[0].s === 1793975400 && b.w[0].on.length === 3, "next Shabbat with 3 ON times");
+  check(q.body.length < 2000, "body size " + q.body.length);
+  r = dev.call("ShabbatPub", {});
+  check(r.d.ok === FRI && r.d.err === "" && r.d.due >= FRI + 82800, "ok, next send in ~a day");
+  // nothing more until a change or the next day
+  for (let t = FRI; t < FRI + 3600; t += 15) {
+    dev.now = t;
+    dev.tick();
+  }
+  check(dev.reqs.length === 1, "no resend within the hour");
+  // a settings change is sent ~30 s later; test time does not change what is sent
+  dev.call("ShabbatSet", { skip: true, test: 1794045600 });
+  dev.tick();
+  check(dev.reqs.length === 1, "change not sent at once");
+  dev.now += 45;
+  dev.tick();
+  check(dev.reqs.length === 2, "change sent after ~30 s");
+  b = JSON.parse(dev.reqs[1].body);
+  check(b.w[0].x === 1 && b.w[0].on.length === 0 && b.now === dev.now, "skip sent, real time");
+  dev.call("ShabbatSet", { skip: false, test: 0 });
+  // failures back off
+  dev.httpReply = { code: 503, message: "Service Unavailable", body: "" };
+  const t0 = dev.now + 45;
+  dev.now = t0;
+  dev.tick();
+  check(dev.reqs.length === 3, "sent after unskip");
+  r = dev.call("ShabbatPub", {});
+  check(r.d.err === "HTTP 503" && r.d.due === t0 + 300 && r.d.ok < t0, "503 -> retry in 5 min");
+  dev.httpReply = null;
+  dev.httpErr = -104;
+  dev.now = t0 + 301;
+  dev.tick();
+  r = dev.call("ShabbatPub", {});
+  check(dev.reqs.length === 4 && r.d.due === t0 + 301 + 1200, "timeout -> retry in 20 min");
+  dev.httpErr = 0;
+  dev.httpReply = { code: 204, message: "No Content", body: "" };
+  dev.call("ShabbatPub", { send: true });
+  r = dev.call("ShabbatPub", {});
+  check(dev.reqs.length === 5 && r.d.err === "" && r.d.ok === t0 + 301, "send now");
+  // reboot keeps the settings and sends once the clock is synced
+  const dev2 = makeDevice({ kvs: dev.kvs, now: 0 });
+  dev2.tick();
+  check(dev2.reqs.length === 0, "not sent before clock sync");
+  dev2.now = FRI;
+  dev2.tick();
+  check(dev2.reqs.length === 1 && dev2.reqs[0].url === q.url, "sent after reboot");
+  // stop
+  r = dev.call("ShabbatPub", { off: true });
+  check(r.ok && !r.d.on && !("shabbat_pub" in dev.kvs), "stopped, KVS key removed");
+  dev.now += 2 * 86400;
+  dev.tick();
+  check(dev.reqs.length === 5, "nothing sent after stop");
+  // 12 worst-case timers still fit one request
+  const tl = Array.from({ length: 12 }, (_, i) => [1, i * 120, 30, 0, 0, 1]);
+  const dev3 = makeDevice({
+    kvs: {
+      shabbat_elev_cfg: JSON.stringify({ t: tl, a: 1, s: 0 }),
+      shabbat_pub: JSON.stringify(P)
+    },
+    now: FRI
+  });
+  dev3.tick();
+  check(dev3.reqs.length === 1, "12 timers: sent");
+  console.log(
+    "T7 publishing: OK (body " +
+      q.body.length +
+      " bytes, 12 timers " +
+      dev3.reqs[0].body.length +
+      ")"
+  );
 }
 
 // ---------- T5: UI loader page ----------
