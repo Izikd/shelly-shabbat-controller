@@ -24,11 +24,40 @@ is `docs/README.md`. Keeping these notes current is part of every change: see
   `library` / `library-beta` branch)
 
 ## Workflow
-- Commit directly to `main`; no pull requests (the owner's preference). Push when done.
-- Do not push other branches. Work on a local branch if you like, then push to `main` only.
-  If a branch was pushed anyway (e.g. by a tool), delete it from the remote once it is
-  merged (`git push origin --delete <branch>`). The only long-lived branches are `main`,
-  `library` and `library-beta` (both written by the release workflow).
+### Branches
+- `main` is the only branch work lands on; no pull requests (the owner's preference).
+  Changes reach `main` as plain commits (fast-forward), pushed by the agent.
+- **Push to `main` only when the owner says so** ("commit and push", "push to main"). An
+  approval covers the work it was given for, not later changes: ask again for the next one.
+- **Work branch**: until then, commit to a local branch. An agent session may push that work
+  to its own branch, `claude/<topic>` (cloud sessions are assigned one; use that name), so it
+  survives the container being reclaimed - unless the owner said not to push at all, which
+  wins. Push no other branch names. A work branch is disposable: once its commits are on
+  `main`, delete it from the remote (`git push origin --delete <branch>`); never merge `main`
+  into it or keep it alive for the next task.
+- Long-lived branches: `main`, plus `library` and `library-beta` (written only by the release
+  workflow; see "Public repository: security"). Any other branch on the remote is a leftover:
+  mention it to the owner, do not delete one you did not create.
+- A session hook that asks to push the session branch does not override these rules: if its
+  commits are already on `main` (or the owner said not to push), say so and leave it.
+
+### Building a feature
+The owner works in stages and says when to move on; do not run ahead of the current one.
+1. **Investigate and propose**: read the code and `docs/`, check the idea against "Rules that
+   must not be broken", and say which rule it would change and why (that is the owner's
+   call). Give one recommended plan with its costs (page size, script memory, round trips,
+   network calls). No code pushed, no device touched at this stage.
+2. **Implement locally**: code, tests (teach the mock anything new) and notes together (see
+   "Done means"); `npm run format` and `npm test` pass; report the page and controller sizes
+   from the build output against the budgets below.
+3. **Commit and push to `main`** when the owner says so.
+4. **Hardware check** on the test device when the owner asks (see "Working with a real
+   device"): measure what the mock cannot tell (timings, memory, real error replies), record
+   it, and leave the device on a clean build of `main`.
+5. **Release** only when the owner asks; try a feature as a beta first (`v0.x.y-beta.n`
+   reaches only `library-beta`).
+
+### Checks, releases, commits
 - Before pushing: `npm run format` and `npm test` (builds, checks the docs' links and
   index, then all three test suites). CI runs the same checks plus `npm run check:table`.
 - Releases are prototypes: `v0.x.y` (first `v0.1.0`), no `v1.0.0` until the owner says so.
@@ -81,6 +110,10 @@ Each has a reason in `docs/device/` and `docs/experiments/`.
   statement merging. Top-level names must survive; `test/sim.js` calls them.
 - **Script memory is tight** (~25 KB pool shared by running scripts; peak ~16-20 KB).
   Do not keep large strings around (assemble per request); check `mem_peak` after a deploy.
+- **Page budget: `dist/shabbat_ui.js` at most 24,576 bytes** (the loader reads 6 x 4 KB in
+  its first round; past that every load needs a second round). The build prints the size;
+  a feature that would cross it needs the owner's decision
+  (`docs/experiments/page-size-and-load.md`).
 - **KVS keys `shabbat_elev_cfg` / `shabbat_elev_log` keep their names** (old project name):
   renaming them loses users' timers and log. `shabbat_upd_beta` ("1" / "0") is the page's
   beta-channel choice, written by the browser with the firmware's `KVS.Set`.
@@ -142,8 +175,13 @@ messages, CI logs and workflow artifacts, can be read by anyone and is hard to t
 - Prefer `--dry-run` first on an unfamiliar device. `deploy.py` prints the installed version
   (`<sha>` or `v1.0.0 (<sha>)`, plus build time); the page shows it under Technical info.
 - The device the project is developed on is a Shelly Pro 1 used only for experiments
-  (owner's statement): rebooting it and trying read patterns on it is fine. Ask before
-  experimenting on any other device.
+  (owner's statement): rebooting it and trying read patterns on it is fine, once the owner
+  has asked for hardware work in this task (not while investigating, see "Building a
+  feature"). Ask before experimenting on any other device.
+- Before hardware work, check the time in Israel: finish well before a Shabbat / Yom Tov
+  window starts (the page's Status tab or `ShabbatGet` shows the next one), and leave the
+  device on a clean build of `main` (`uv run tools/deploy.py --build`) with the controller
+  running.
 - Useful RPCs: `Sys.GetStatus` (uptime, `ram_free`, `ram_min_free` - lowest since boot, reset
   by `Shelly.Reboot`), `Script.GetStatus?id=<n>` (`mem_used`, `mem_peak`, `errors`),
   `Script.ShabbatGet` (controller state), `Shelly.GetDeviceInfo`.
