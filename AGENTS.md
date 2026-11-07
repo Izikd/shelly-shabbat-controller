@@ -130,7 +130,8 @@ Each has a reason in `docs/device/` and `docs/experiments/`.
   few connections, shared by every open page, app and tab, and refuses the rest ("Failed to
   fetch" on the LAN, a 502 page through a tunnel). The loader (`UI_B` in `src/main.js`) and
   the page (`dev` in `src/ui.js`) queue their requests; only requests that are safe to repeat
-  are retried (never a `PutCode` append). The mock refuses beyond 3 at once.
+  are retried (never a `PutCode` append). The mock refuses beyond 3 at once. The page
+  polls only while visible (`document.hidden`) and asks for no forecast on load.
 - **Controller code style**: call depth <= 5, flat expressions, named top-level callbacks,
   no `Array.prototype.sort`, at most 5 timers / handlers / concurrent `Shelly.call`s.
   RPC handlers only queue work; a timer callback does it (`enqueue`/`runQueue`).

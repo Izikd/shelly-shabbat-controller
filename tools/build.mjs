@@ -86,6 +86,27 @@ function squeezeCss(src) {
   });
 }
 
+// Z85 (ZeroMQ's base85): 4 bytes -> 5 printable ASCII characters, none of them " or \, so the
+// text goes into a JS string as it is, 6% shorter than base64's 4 characters per 3 bytes
+// (docs/experiments/page-size-and-load.md). The first character is the number of zero bytes
+// added to reach a multiple of 4; src/unpack.js drops them again.
+const Z85 = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ.-:+=^!/*?&<>()[]{}@%$#";
+function z85(buf) {
+  const pad = (4 - (buf.length % 4)) % 4;
+  const b = Buffer.concat([buf, Buffer.alloc(pad)]);
+  let out = String(pad);
+  for (let i = 0; i < b.length; i += 4) {
+    let v = b.readUInt32BE(i);
+    let five = "";
+    for (let k = 0; k < 5; k++) {
+      five = Z85[v % 85] + five;
+      v = Math.floor(v / 85);
+    }
+    out += five;
+  }
+  return out;
+}
+
 async function ui(src) {
   if (!src.includes('"@@VERSION@@"')) throw new Error('src/ui.js: "@@VERSION@@" marker missing');
   if (!src.includes("//@@TABLEGEN@@")) throw new Error("src/ui.js: //@@TABLEGEN@@ marker missing");
@@ -97,13 +118,14 @@ async function ui(src) {
     mangle: { toplevel: true }, // runs inside new Function(), nothing outside sees its names
     format: { ...FORMAT, ecma: 2020 } // UTF-8: it is compressed below, so it may be non-ASCII
   });
-  // Compress the page (zlib) and store it base64 inside src/unpack.js, which the browser runs:
-  // ~35 KB of ASCII-escaped code becomes ~15 KB of ASCII, so fewer Script.GetCode reads.
-  const payload = deflateSync(Buffer.from(page.code, "utf8"), {
+  // Compress the page (zlib) and store it as Z85 text inside src/unpack.js, which the browser
+  // runs: ~52 KB of minified code becomes ~23 KB of ASCII, so fewer Script.GetCode reads.
+  const deflated = deflateSync(Buffer.from(page.code, "utf8"), {
     level: 9,
     windowBits: 15, // 32 KB window: the size browsers' DecompressionStream("deflate") accepts
     strategy: zc.Z_DEFAULT_STRATEGY
-  }).toString("base64");
+  });
+  const payload = z85(deflated);
   const unpack = read("src/unpack.js");
   if (!unpack.includes('"@@PAYLOAD@@"')) throw new Error('src/unpack.js: "@@PAYLOAD@@" missing');
   const out = await minify(
@@ -116,7 +138,7 @@ async function ui(src) {
   );
   console.log(
     `settings page: ${Buffer.byteLength(page.code)} bytes minified, ` +
-      `${payload.length} as compressed base64`
+      `${payload.length} as compressed Z85`
   );
   return (
     `// shabbat_ui - ${STAMP} - DO NOT START this script. It only stores the ` +

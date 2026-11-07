@@ -22,6 +22,9 @@ the device) or *design* (a rule we chose). Recheck on new firmware or other mode
 - So the loader and the page keep at most 2 requests in flight and retry refused ones
   (*design*); `test/mockdevice.js` refuses beyond 3 at once, alternately by dropping the
   connection and with a 502 page.
+- An open page polls the status every 15 s, but not while its tab is hidden or its window
+  minimised (it catches up when shown again), so pages left open in the background do not
+  hold connections (*design*, 2026-11-07).
 
 ## Outgoing HTTP (publishing to the schedule service)
 - `HTTP.Request` supports GET, POST, PUT, HEAD and DELETE only - no PATCH (*doc*). The whole

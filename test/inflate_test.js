@@ -16,9 +16,32 @@ function check(cond, msg) {
   }
 }
 
+// Z85 as tools/build.mjs writes it (test/stamp.js has a copy for the update test)
+const { z85, unz85, Z85 } = require("./stamp.js");
+// the build's encoder must be the same one
+check(
+  fs
+    .readFileSync(path.join(__dirname, "..", "tools", "build.mjs"), "utf8")
+    .includes(JSON.stringify(Z85)),
+  "tools/build.mjs uses the same Z85 alphabet"
+);
+
+check(
+  [0, 1, 2, 3, 4, 5, 300].every((n) => {
+    const b = Buffer.from(Array.from({ length: n }, (_, i) => (i * 97 + 255) & 255));
+    return unz85(z85(b)).equals(b);
+  }),
+  "Z85 round trip"
+);
+check(
+  z85(Buffer.from([0x86, 0x4f, 0xd2, 0x6f, 0xb5, 0x59, 0xf7, 0x5b])) === "0HelloWorld",
+  "Z85 spec example"
+);
+
 // Run the unpacker like a browser without DecompressionStream: the payload is a tiny program
-// that records it ran, so this also covers the fallback start-up path.
-const ran = [];
+// that records it ran, so this also covers the fallback start-up path and the Z85 decoding.
+// Programs of every length mod 4 check that the padding is dropped.
+let ran = [];
 const mod = {};
 const ctx = {
   document: {
@@ -28,7 +51,6 @@ const ctx = {
       }
     })
   },
-  atob: (b) => Buffer.from(b, "base64").toString("latin1"),
   TextDecoder,
   Uint8Array,
   Uint16Array,
@@ -38,9 +60,13 @@ const ctx = {
   },
   module: mod
 };
-const payload = zlib.deflateSync(Buffer.from("started()")).toString("base64");
-vm.runInNewContext(SRC.replace('"@@PAYLOAD@@"', JSON.stringify(payload)), ctx);
-check(ran.length === 1 && ran[0] === "started()", "fallback start-up runs the payload: " + ran);
+for (const prog of ["started()", "started(1)", "started(12)", "started(123)", "s()"]) {
+  ran = [];
+  const payload = z85(zlib.deflateSync(Buffer.from(prog)));
+  check(!/["\\]/.test(payload), "Z85 text needs no escaping in a JS string");
+  vm.runInNewContext(SRC.replace('"@@PAYLOAD@@"', JSON.stringify(payload)), ctx);
+  check(ran.length === 1 && ran[0] === prog, "fallback start-up runs the payload: " + ran);
+}
 const inflate = mod.exports;
 check(typeof inflate === "function", "inflate exported for tests");
 

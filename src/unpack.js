@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 // Unpacker for the compressed settings page. tools/build.mjs minifies src/ui.js, compresses it
-// (zlib / RFC 1950), base64-encodes it into PAYLOAD below and stores this file as the
+// (zlib / RFC 1950), encodes it as Z85 text into PAYLOAD below and stores this file as the
 // shabbat_ui script. The controller's loader runs it with new Function(), in the browser.
 //
 // Modern browsers decompress with the built-in DecompressionStream("deflate"); older ones
@@ -178,9 +178,19 @@ if (typeof document !== "undefined")
     if (typeof module !== "undefined") module.exports = inflate; // for test/inflate_test.js
 
     // start (last, so the tables above are set before inflate() can run)
-    var bin = atob(PAYLOAD),
-      data = new Uint8Array(bin.length);
-    for (var i = 0; i < bin.length; i++) data[i] = bin.charCodeAt(i);
+    // PAYLOAD is Z85 (tools/build.mjs): 5 characters per 4 bytes, after one digit that says
+    // how many zero bytes were added at the end to fill the last 4. The loop runs to the end of
+    // the text instead of using PAYLOAD.length: the minifier would turn that into a number,
+    // which would be wrong for a payload swapped after the build (test/stamp.js).
+    var Z85 =
+        "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ.-:+=^!/*?&<>()[]{}@%$#",
+      bytes = [];
+    for (var j = 1; PAYLOAD.charAt(j);) {
+      for (var v = 0, k = 0; k < 5; k++) v = v * 85 + Z85.indexOf(PAYLOAD.charAt(j++));
+      bytes.push(v >>> 24, (v >>> 16) & 255, (v >>> 8) & 255, v & 255);
+    }
+    bytes.length -= +PAYLOAD.charAt(0);
+    var data = new Uint8Array(bytes);
 
     if (typeof DecompressionStream === "function" && typeof Blob.prototype.stream === "function") {
       new Response(new Blob([data]).stream().pipeThrough(new DecompressionStream("deflate")))

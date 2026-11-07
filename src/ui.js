@@ -566,7 +566,9 @@ if (typeof document !== "undefined")
     function draft() {
       return S.timers.map(toArr);
     }
-    function load(j) {
+    // quiet: the reply matches the last one (apart from the clock), so the page stays as it is;
+    // rebuilding it every 15 s re-created every row of the Schedule tab for nothing
+    function load(j, quiet) {
       S.cfg = j.cfg;
       S.st = j.st;
       S.log = j.log || "";
@@ -578,7 +580,18 @@ if (typeof document !== "undefined")
         S.timers = j.cfg.timers.map(toObj);
         S.saved = JSON.stringify(j.cfg.timers);
       }
-      render();
+      if (!quiet) render();
+    }
+    // the status reply without the device's clock (st.now changes on every reply)
+    var lastGet = "";
+    function same(j) {
+      var now = j.st.now;
+      j.st.now = 0;
+      var k = JSON.stringify(j);
+      j.st.now = now;
+      var was = lastGet;
+      lastGet = k;
+      return k === was;
     }
     function dirty() {
       return JSON.stringify(draft()) !== S.saved;
@@ -603,13 +616,17 @@ if (typeof document !== "undefined")
           .then(function (j) {
             if (j && j.cfg) {
               S.err = "";
+              same(j);
               load(j);
             } else refresh();
           })
           .catch(refresh);
         return;
       }
-      rpc("ShabbatGet", {}, load);
+      var err = S.err; // an error on screen goes away with the next good reply
+      rpc("ShabbatGet", {}, function (j) {
+        load(j, same(j) && !err);
+      });
     }
 
     // ---------- time formatting (time zone of the place; the browser's before one is set) ----------
@@ -2418,7 +2435,7 @@ if (typeof document !== "undefined")
         sel = fid && f.selectionStart;
       root.replaceChildren(app);
       window.scrollTo(0, y);
-      // keep the field being typed in (the page re-renders every 15 s)
+      // keep the field being typed in (a new status from the device re-renders the page)
       f = fid && document.getElementById(fid);
       if (f && f.focus) {
         f.focus();
@@ -2515,12 +2532,19 @@ if (typeof document !== "undefined")
     `;
     document.head.appendChild(h("style", null, css));
     render();
-    refresh();
-    preview();
+    refresh(); // the Forecast tab asks for its preview when it is opened
     loadBeta();
     loadPub();
-    setInterval(function () {
+    // Every open page shares the device's few connections (docs/device/network.md): a page in
+    // a hidden tab or a minimised window does not ask, and catches up when it is shown again.
+    function poll() {
       refresh();
       if (S.tab === "status" && S.pub && S.pub.on) loadPub();
+    }
+    setInterval(function () {
+      if (!document.hidden) poll();
     }, 15000);
+    document.addEventListener("visibilitychange", function () {
+      if (!document.hidden) poll();
+    });
   })();

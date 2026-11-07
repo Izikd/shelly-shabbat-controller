@@ -81,10 +81,17 @@ const listening = (proc) =>
       [method, params || {}]
     );
 
-  const listCalls = [];
+  const listCalls = [],
+    previewCalls = [];
   page.on("request", (r) => r.url().includes("Script.List") && listCalls.push(r.url()));
+  page.on("request", (r) => r.url().includes("ShabbatPreview") && previewCalls.push(r.url()));
   await page.goto(`http://localhost:${PORT}/script/1/ui`);
   await page.waitForSelector("text=הפעלה הבאה של הממסר");
+  await page.waitForTimeout(500);
+  check(
+    previewCalls.length === 0,
+    "no preview request on load (Status tab): " + previewCalls.length
+  );
   check(
     listCalls.length === 0,
     "loader used the page script id from the controller (no Script.List)"
@@ -341,6 +348,55 @@ const listening = (proc) =>
   check((await en.getAttribute("html", "dir")) === "rtl", "switch to Hebrew is remembered");
   await en.click("button.lang");
   await en.waitForSelector("text=Next relay ON");
+
+  // the 15 s status poll: not from a hidden page (it catches up when shown), and a reply
+  // that matches the last one (apart from the clock) leaves the page as it is
+  const pl = await browser.newPage({ locale: "en-US", timezoneId: "Europe/London" });
+  pl.setDefaultTimeout(8000);
+  pl.on("pageerror", (e) => errors.push("poll: " + e.message));
+  await pl.addInitScript(() => {
+    const si = window.setInterval;
+    window.setInterval = (f, ms) => (ms === 15000 ? ((window.__poll = f), 0) : si(f, ms));
+    Object.defineProperty(document, "hidden", { get: () => !!window.__hidden });
+  });
+  let gets = 0;
+  pl.on("request", (r) => r.url().includes("ShabbatGet") && gets++);
+  const getDone = () => pl.waitForResponse((r) => r.url().includes("ShabbatGet"));
+  await pl.goto(`http://localhost:${PORT}/script/1/ui`);
+  await pl.waitForSelector("text=Next relay ON");
+  await pl.waitForLoadState("networkidle"); // the start-up requests have re-rendered the page
+  await pl.evaluate(() => (document.querySelector(".app").__mark = 1));
+  let n0 = gets;
+  let done = getDone();
+  await pl.evaluate(() => window.__poll());
+  await done;
+  await pl.waitForTimeout(100);
+  check(gets === n0 + 1, "visible page polls");
+  check(
+    await pl.evaluate(() => document.querySelector(".app").__mark === 1),
+    "same status: page not rebuilt"
+  );
+  await pl.evaluate(() => {
+    window.__hidden = true;
+    window.__poll();
+  });
+  await pl.waitForTimeout(300);
+  check(gets === n0 + 1, "hidden page does not poll");
+  await api("ShabbatSet", { skip: true });
+  done = getDone();
+  await pl.evaluate(() => {
+    window.__hidden = false;
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+  await done;
+  await pl.waitForTimeout(100);
+  check(gets === n0 + 2, "page polls when shown again");
+  check(
+    await pl.evaluate(() => document.querySelector(".app").__mark !== 1),
+    "changed status: page rebuilt"
+  );
+  await api("ShabbatSet", { skip: false });
+  await pl.close();
 
   // older browser: no DecompressionStream -> the page's own decoder (src/unpack.js)
   const old = await browser.newPage({ locale: "en-US", timezoneId: "Europe/London" });

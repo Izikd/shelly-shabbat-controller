@@ -114,8 +114,24 @@ per round trip). Entries are dated, newest last; keep the method so a test can b
   reads. The last measurement with 6 reads was a 2.08 s median, so the 7th piece and the
   tunnel's noise cost ~0.7 s.
 
+## 2026-11-07 - Z85 instead of base64, and fewer requests from the page
+- **Measured** (local builds only, not on hardware): storing the compressed page as Z85
+  (5 ASCII characters per 4 bytes, no `"` or `\`, so no escaping) instead of base64 (4 per 3)
+  took the payload from 25,108 to 23,681 characters and the stored page from 28,312 to
+  27,076 bytes, with the decoder and the changes below included: ~1.6 KB of room under the
+  28,672-byte budget instead of 360 bytes. Still 7 code reads. The decoder reads the text up
+  to its end rather than using `PAYLOAD.length`: terser turned that into a constant, which
+  broke the update test's re-stamped page (`test/stamp.js`).
+- **Requests**: the page no longer asks for a forecast (`ShabbatPreview`, computed on the
+  device) on load, only when the Forecast tab is opened or the timers change. The 15 s status
+  poll skips hidden tabs and minimised windows and catches up when the page is shown again,
+  so pages left open in the background no longer take the device's few connections
+  (`../device/network.md`). A status reply that matches the last one, apart from `st.now`,
+  no longer rebuilds the page (the Schedule tab has hundreds of rows).
+- **Not yet checked on hardware**: load time with the 27 KB page.
+
 ## Ideas not tried yet
 - Inline the first status into the HTML (saves one round trip; costs controller work per
   request).
 - Cache the page code in the browser (e.g. keyed by the version stamp) to skip the code reads
-  on repeat visits.
+  on repeat visits (costs ~250 bytes of loader text in the controller's memory).
