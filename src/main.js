@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 // =============================================================================
 // Shabbat controller for Shelly (Gen2+ with a relay, firmware 2.0+; developed on a Pro 1)
 //

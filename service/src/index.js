@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 // Schedule service: public read-only pages with the upcoming Shabbat & Yom Tov times of a
 // Shabbat controller (src/main.js). Runs as a Cloudflare Worker with a D1 database.
 //

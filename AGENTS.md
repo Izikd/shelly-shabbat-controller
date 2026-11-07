@@ -73,6 +73,10 @@ The owner works in stages and says when to move on; do not run ahead of the curr
   version (GitHub API `workflow_dispatch` on `release.yml`, ref `main`), which creates the
   tag itself. Everything works without
   tags: builds are stamped `version dev - commit <sha> - built <ISO time>`.
+- License: MIT (`LICENSE`). Every source file starts with an SPDX line,
+  `// SPDX-License-Identifier: MIT` (`#` or `--` in other languages), after a shebang if there
+  is one; `tools/gen_table.py` writes it into `src/table.js`. The build strips comments, so it
+  never reaches `dist/`.
 - Commit messages: a short subject, then why, and what was measured or tested on hardware.
   The subjects become the release notes (`tools/release_notes.sh`: the commits since the
   previous release, for a stable one since the previous stable), and the page's "What's

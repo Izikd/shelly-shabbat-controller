@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 // Fake Shelly for UI testing: runs dist/shabbat_controller.js in a VM with mocked
 // script APIs and serves the endpoints the browser uses:
 //   GET  /script/1/ui            loader page (from the script's HTTPServer endpoint)

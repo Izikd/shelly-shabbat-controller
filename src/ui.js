@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 // Shabbat controller - settings UI. Install as a script named "shabbat_ui" and
 // NEVER start it: the page at /script/<id>/ui loads this code into the browser.
 // Plain ES5 + guard, so starting it on the Shelly by mistake does nothing.

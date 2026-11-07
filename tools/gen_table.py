@@ -1,4 +1,5 @@
 #!/usr/bin/env -S uv run --script
+# SPDX-License-Identifier: MIT
 # /// script
 # requires-python = ">=3.10"
 # dependencies = ["hdate==1.2.2"]  # pinned: a new hdate may move times; bump on purpose
@@ -157,6 +158,7 @@ def main():
     first = datetime.fromtimestamp(ranges[0][0], timezone.utc).date()
     last = datetime.fromtimestamp(ranges[-1][1], timezone.utc).date()
     with open(a.output, "w", encoding="utf-8") as f:
+        f.write("// SPDX-License-Identifier: MIT\n")
         f.write(f"// Shabbat & Yom Tov table: {len(ranges)} windows, {first} .. {last} ({src})\n")
         f.write(f"let TBL_BASE = {BASE};\n")
         f.write("let TBL_T = [" + ",".join(f'"{t}"' for t in titles) + "];\n")

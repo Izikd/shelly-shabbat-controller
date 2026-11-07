@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 // In-memory stand-in for a Cloudflare D1 binding (the subset service/src uses), on Node's
 // built-in SQLite, with the real schema from service/schema.sql.
 import { readFileSync } from "node:fs";

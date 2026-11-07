@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: MIT
 -- Schedule service database (Cloudflare D1, SQLite). Apply with:
 --   npx wrangler d1 execute shabbat-schedule --remote --file service/schema.sql -c service/wrangler.toml
 -- Safe to re-run.

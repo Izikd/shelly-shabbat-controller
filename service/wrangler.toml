@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MIT
 # Cloudflare Worker of the schedule service. Deploy (see service/README.md):
 #   npm run service:deploy
 # The account comes from CLOUDFLARE_ACCOUNT_ID / the API token; a self-hosted copy changes

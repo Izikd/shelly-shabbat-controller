@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 // Unpacker for the compressed settings page. tools/build.mjs minifies src/ui.js, compresses it
 // (zlib / RFC 1950), base64-encodes it into PAYLOAD below and stores this file as the
 // shabbat_ui script. The controller's loader runs it with new Function(), in the browser.

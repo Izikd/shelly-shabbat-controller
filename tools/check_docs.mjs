@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// SPDX-License-Identifier: MIT
 // Keeps the notes honest: run by `npm test` and CI.
 //   1. every file under docs/ is listed in docs/README.md (the index)
 //   2. every relative Markdown link in AGENTS.md, README.md and docs/ points to a file that exists

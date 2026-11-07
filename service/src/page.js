@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 // HTML of the public pages (no script: plain server-rendered HTML, Israel time).
 import qrcode from "qrcode-generator";
 

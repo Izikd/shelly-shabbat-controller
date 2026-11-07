@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 // Shabbat & Yom Tov table: 336 windows, 2025-01-03 .. 2030-12-28 (hdate lat=32.0877639 lon=34.8859985)
 let TBL_BASE = 1735689600;
 let TBL_T = ["Shabbat","Pesach + Shabbat","Pesach VII + Shabbat","Shavuot","Rosh Hashana","Yom Kippur","Sukkot","Simchat Torah","Pesach","Pesach VII","Shavuot + Shabbat","Rosh Hashana + Shabbat","Sukkot + Shabbat","Simchat Torah + Shabbat","Yom Kippur + Shabbat"];

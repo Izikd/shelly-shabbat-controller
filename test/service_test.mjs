@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 // Tests of the schedule service (service/src) on Node, with an in-memory D1 (test/fake_d1.mjs).
 // Usage: node test/service_test.mjs
 import { route, cleanup, validSchedule, LIMITS } from "../service/src/index.js";

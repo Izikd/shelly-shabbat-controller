@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// SPDX-License-Identifier: MIT
 // Build the installable scripts from the readable sources:
 //   dist/shabbat_controller.js       controller (src/main.js + src/table.js), minified
 //   dist/shabbat_ui.js               settings page (src/ui.js), minified

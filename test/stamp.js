@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 // Re-stamp a built script with another version, as if it were a release build: the first
 // line, and for shabbat_ui also the stamp inside its compressed page (the page compares its
 // own version too). Used by test/mockdevice.js and test/ui_test.js for the update test.

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 // Browser test of the settings UI against test/mockdevice.js (Playwright + Chromium).
 // Usage: node test/ui_test.js <outdir>
 "use strict";

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 // Tests the fallback DEFLATE decoder in src/unpack.js against Node's zlib.
 // Usage: node test/inflate_test.js
 "use strict";

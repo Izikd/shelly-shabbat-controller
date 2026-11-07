@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: MIT
 # Release notes for VERSION (v1.2.3 or v1.2.3-beta.1) from the commit subjects since the
 # previous release, as Markdown on stdout. Used by .github/workflows/release.yml instead of
 # GitHub's generated notes, which list merged pull requests (this project has none).

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 // Node simulator for dist/shabbat_controller.js - mocks the Shelly script APIs.
 // Usage: node test/sim.js   (FLAGS=1 turns CFG.debug and CFG.diag on, QUICK=1 skips the long sweep)
 "use strict";
