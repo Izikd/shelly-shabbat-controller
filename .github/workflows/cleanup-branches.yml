@@ -1,0 +1,44 @@
+# SPDX-License-Identifier: MIT
+# Deletes the feature branches that a push to main has just merged: a branch goes only
+# when its tip is one of the commits this push brought to main, so it has nothing that is
+# not on main. Branches merged earlier, and branches with any other commit, are left alone.
+name: Delete merged branches
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write # delete branches
+
+concurrency:
+  group: cleanup-branches
+
+jobs:
+  cleanup:
+    name: Delete branches merged by this push
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # all branches, to compare their tips with the pushed commits
+      - name: Delete them
+        env:
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.event.after }}
+        run: |
+          if [ "${BEFORE//0/}" = "" ] || ! git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
+            echo "No previous main to compare with; nothing to do."
+            exit 0
+          fi
+          git rev-list "$BEFORE..$AFTER" > "$RUNNER_TEMP/pushed"
+          git for-each-ref --format='%(refname:lstrip=3) %(objectname)' refs/remotes/origin |
+          while read -r branch sha; do
+            case "$branch" in
+              HEAD | main | library | library-beta) continue ;;
+            esac
+            if grep -qx "$sha" "$RUNNER_TEMP/pushed"; then
+              echo "Deleting $branch (merged by this push)"
+              git push origin --delete "$branch" || echo "Could not delete $branch"
+            fi
+          done

@@ -24,7 +24,7 @@ is `docs/README.md`. Keeping these notes current is part of every change: see
   to `dist/`, the release workflow publishes it with the scripts to the `library` branch
   (stable versions) or `library-beta` (pre-releases such as `v0.2.0-beta.1`)
 - `.github/workflows/` CI on push/PR, releases on `v*` tags or Run workflow (and the
-  `library` / `library-beta` branch)
+  `library` / `library-beta` branch), deleting the branches a push to `main` merged
 
 ## Workflow
 ### Branches
@@ -32,21 +32,23 @@ is `docs/README.md`. Keeping these notes current is part of every change: see
   Changes reach `main` as plain commits (fast-forward), pushed by the agent.
 - **Push to `main` only when the owner says so** ("commit and push", "push to main"). An
   approval covers the work it was given for, not later changes: ask again for the next one.
-- **Until then, keep the work local**: commit to a local branch and push nothing else - no
-  work branches, not even the session's own `claude/<topic>` branch. Cloud sessions cannot
-  delete remote branches (GitHub answers 403), so a pushed work branch is left for the owner
-  to clean up by hand. The cost is that uncommitted or unpushed work dies with the container:
-  for long work, ask the owner early whether to push to `main`.
+- **Until then, push work only to the session branch** (the branch the cloud session was
+  started on, e.g. `claude/<topic>`). Push it whenever there is a commit worth keeping: it
+  is a backup, not a release, and work that is only local dies with the container. Never
+  push other work branches, and never merge or push anything to `main` from it without the
+  owner's word.
+- **Merged branches delete themselves**: `.github/workflows/cleanup-branches.yml` runs on
+  every push to `main` and deletes each branch whose tip is one of the commits that push
+  brought to `main`. So move `main` to the session branch's tip as it is
+  (`git push origin <session-branch>:main`, a fast-forward); a rebased or cherry-picked
+  branch is not deleted. Branches merged earlier, and branches with commits that are not on
+  `main`, are never touched. Cloud sessions cannot delete branches themselves (GitHub
+  answers 403); a branch the workflow leaves is for the owner to decide on: tell them what
+  is on it.
 - Long-lived branches: `main`, plus `library` and `library-beta` (written only by the release
-  workflow; see "Public repository: security"). Every other branch is a feature branch:
-  **delete it from the remote once it is merged**, whoever created it. Merged means every
-  commit of it is on `main`: its tip is an ancestor of `main`, or `git cherry origin/main
-  <branch>` lists no `+` line (rebased or cherry-picked). A branch with unmerged commits is
-  never deleted: tell the owner what is on it and leave it. Check the remote's branches
-  after pushing to `main`.
-  (A cloud session cannot delete one; give the owner the branch name to delete on GitHub.)
-- A session hook that asks to push the session branch does not override these rules: if its
-  commits are already on `main`, or the work waits for the owner's word, say so and leave it.
+  workflow; see "Public repository: security"). Every other branch is a feature branch.
+- The cloud session's stop hook asks to push the session branch when it has unpushed commits.
+  Push the session branch (never `main`) and do not discuss the hook in replies.
 
 ### Building a feature
 The owner works in stages and says when to move on; do not run ahead of the current one.
@@ -54,9 +56,9 @@ The owner works in stages and says when to move on; do not run ahead of the curr
    must not be broken", and say which rule it would change and why (that is the owner's
    call). Give one recommended plan with its costs (page size, script memory, round trips,
    network calls). No code pushed, no device touched at this stage.
-2. **Implement locally**: code, tests (teach the mock anything new) and notes together (see
-   "Done means"); `npm run format` and `npm test` pass; report the page and controller sizes
-   from the build output against the budgets below.
+2. **Implement on the session branch**: code, tests (teach the mock anything new) and notes
+   together (see "Done means"); `npm run format` and `npm test` pass; report the page and
+   controller sizes from the build output against the budgets below.
 3. **Commit and push to `main`** when the owner says so.
 4. **Hardware check** on the test device when the owner asks (see "Working with a real
    device"): measure what the mock cannot tell (timings, memory, real error replies), record

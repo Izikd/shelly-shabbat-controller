@@ -203,7 +203,8 @@ the build time when comparing, so rebuilding the same commit does not re-upload.
   local variables and dropping whitespace (no code restructuring, which could break the engine
   limits below). Top-level names are kept for `test/sim.js`
 - `tools/deploy.py` uploads a build or a release to a device (see "Upgrading from a computer")
-- `.github/workflows/` CI (format, build, tests, table check) and releases
+- `.github/workflows/` CI (format, build, tests, table check), releases, and deleting
+  branches once a push to `main` has merged them
 - `test/inflate_test.js` the fallback decoder against Node's zlib
 - `test/sim.js` device simulator (minute-by-minute relay sweep vs an independent reference)
 - `test/mockdevice.js` + `test/ui_test.js` fake Shelly + Playwright browser test of the page,
