@@ -394,9 +394,17 @@ def main():
         print(f"  warning: script errors: {status['errors']}")
     try:
         st = dev.call("Script.ShabbatGet", {"id": ctrl["id"]})["st"]
-        off = dev.call("Sys.GetStatus").get("utc_offset", 0)  # show times in the device's zone
-        fmt = lambda t: time.strftime("%a %d %b %H:%M", time.gmtime(t + off)) if t else "-"
+        try:  # times in the location's time zone, else the device's offset
+            from datetime import datetime
+            from zoneinfo import ZoneInfo
+            zone = ZoneInfo(st["tz"])
+            fmt = lambda t: datetime.fromtimestamp(t, zone).strftime("%a %d %b %H:%M") if t else "-"
+        except Exception:
+            off = dev.call("Sys.GetStatus").get("utc_offset", 0)
+            fmt = lambda t: time.strftime("%a %d %b %H:%M", time.gmtime(t + off)) if t else "-"
         cur, nxt, on = st.get("cur"), st.get("next"), st.get("nextOn")
+        print(f"  location: {st.get('loc') or 'none - set it on the settings page'}"
+              + (f" ({st['tz']}), times until {fmt(st['end'])}" if st.get("loc") else ""))
         print(f"  clock synced: {st.get('synced')}, automation: {st.get('auto')}, "
               f"relay: {'ON' if st.get('relay') else 'off'}")
         print(f"  current window: {cur['t'] + ' until ' + fmt(cur['e']) if cur else 'none'}")
