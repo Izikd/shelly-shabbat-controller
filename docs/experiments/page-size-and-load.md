@@ -128,7 +128,13 @@ per round trip). Entries are dated, newest last; keep the method so a test can b
   so pages left open in the background no longer take the device's few connections
   (`../device/network.md`). A status reply that matches the last one, apart from `st.now`,
   no longer rebuilds the page (the Schedule tab has hundreds of rows).
-- **Not yet checked on hardware**: load time with the 27 KB page.
+- **On hardware** (Pro 1, fw 2.0.3, through the tunnel, a441372, page 27,068 bytes; 7 cold
+  loads, fresh browser context, time to the first status): 2.23, 2.25, 2.27, 2.28, 2.32,
+  2.74, 3.38 s - median 2.28 s (2.75 s for the 28,322-byte page, same method). Still 7 code
+  reads; 17 requests in all on load, no `ShabbatPreview`, no page errors. The Forecast tab
+  still loads its forecast when opened. Controller after the loads and one forecast:
+  `mem_used` 17,136, `mem_peak` 23,184 (the forecast's peak, as in
+  `table-generation.md`), no errors; `ram_min_free` 61,184.
 
 ## Ideas not tried yet
 - Inline the first status into the HTML (saves one round trip; costs controller work per
