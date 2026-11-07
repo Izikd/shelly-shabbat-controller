@@ -2,6 +2,7 @@
   "name": "shelly-shabbat-controller",
   "private": true,
   "description": "Shabbat & Yom Tov relay controller for Shelly - build, format and test tooling",
+  "license": "MIT",
   "scripts": {
     "build": "node tools/build.mjs",
     "format": "prettier --write src test tools service",

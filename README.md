@@ -218,3 +218,9 @@ the build time when comparing, so rebuilding the same commit does not re-upload.
   rules that must not be broken
 - `docs/` - Shelly engine and firmware limits learned on the device (`docs/device/`) and
   measurements with the decisions they led to (`docs/experiments/`); index in `docs/README.md`
+
+## License
+MIT, see `LICENSE`. The scripts that run on the device and in the browser use no third-party
+code. The schedule service bundles `qrcode-generator` (MIT). `tools/gen_table.py` uses `hdate`
+(GPL-3.0-or-later) only on the developer's machine to compute the times in `src/table.js`;
+hdate itself is not part of this repository or of any build.
