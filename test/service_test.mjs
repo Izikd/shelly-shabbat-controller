@@ -108,6 +108,40 @@ check(validSchedule({ ...sched, tz: "America/New_York" }).tz === "America/New_Yo
 check(validSchedule(sched).tz === undefined, "no tz: none stored");
 for (const tz of ["Mars/Base", "a b", 5, "x".repeat(70), '"><script>'])
   check(typeof validSchedule({ ...sched, tz }) === "string", "rejects tz " + tz);
+// v 2: repeating timers in short, [first start, last end, every, duration]
+const RP = [1794039000, 1794053400, 20, 3]; // Sat 10:10-14:10, 3 min every 20 min
+const v2 = {
+  ...sched,
+  v: 2,
+  w: [
+    { ...sched.w[0], rp: [RP] },
+    { ...sched.w[1], rp: [] }
+  ]
+};
+const v2ok = validSchedule(v2);
+check(v2ok.v === 2 && JSON.stringify(v2ok.w[0].rp) === JSON.stringify([RP]), "v 2 kept: rp");
+check(validSchedule(sched).w[0].rp === undefined, "v 1: no rp");
+for (const x of [
+  undefined,
+  [[W1.s - 60, W1.s + 60, 20, 3]],
+  [[RP[0], RP[1], 20, 20]],
+  [[RP[0], RP[1], 4, 3]],
+  [[RP[0], RP[1], 20]],
+  Array(49).fill(RP)
+])
+  check(
+    typeof validSchedule({ ...v2, w: [{ ...v2.w[0], rp: x }] }) === "string",
+    "rejects rp " + String(JSON.stringify(x)).slice(0, 50)
+  );
+const rpHtml = renderPage({
+  lang: "en",
+  now: sched.now,
+  name: "Repeat",
+  updated: sched.now,
+  data: v2ok,
+  link: "https://shabbat.example/s/abcdefghij"
+});
+check(/10:10–14:10<\/span><span class="grow">[^<]*3 min every 20 min/.test(rpHtml), "repeat shown");
 const nyHtml = renderPage({
   lang: "en",
   now: sched.now,

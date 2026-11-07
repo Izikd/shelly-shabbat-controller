@@ -29,7 +29,7 @@ if (typeof document !== "undefined")
     var S = {
       tab: "status",
       timers: [],
-      saved: "[]",
+      saved: '{"timers":[],"reps":[]}',
       editing: -1,
       cfg: null,
       st: null,
@@ -202,6 +202,13 @@ if (typeof document !== "undefined")
         minBefore: "כמה דקות לפני ההבדלה",
         minAfter: "כמה דקות אחרי הדלקת הנרות",
         duration: "משך",
+        repeat: "חזרה",
+        repOpts: ["פעם אחת", "חוזר"],
+        every: "כל",
+        forLen: "למשך",
+        repSum: " · כל {0} למשך {1}",
+        pulseEvery: "{0} כל {1}",
+        hrs: "{0} שע׳",
         appliesTo: "חל על",
         applies: ["שבת ויו״ט", "שבת בלבד", "יו״ט בלבד"],
         whichDays: "באילו ימים",
@@ -401,6 +408,13 @@ if (typeof document !== "undefined")
         minBefore: "Minutes before havdalah",
         minAfter: "Minutes after candle lighting",
         duration: "Duration",
+        repeat: "Repeat",
+        repOpts: ["Once", "Repeats"],
+        every: "Every",
+        forLen: "For",
+        repSum: " · every {0} for {1}",
+        pulseEvery: "{0} every {1}",
+        hrs: "{0} h",
         appliesTo: "Applies to",
         applies: ["Shabbat & Yom Tov", "Shabbat only", "Yom Tov only"],
         whichDays: "Which days",
@@ -553,22 +567,34 @@ if (typeof document !== "undefined")
           render();
         });
     }
+    // a repeating timer is stored disabled (older releases leave it off); its on/off is in reps
     function toArr(t) {
-      return [t.a, t.a === 1 ? t.m : t.o, t.d, t.p, t.y, t.e ? 1 : 0];
+      return [t.a, t.a === 1 ? t.m : t.o, t.d, t.p, t.y, t.e && !t.r ? 1 : 0];
     }
-    function toObj(v) {
+    function toObj(v, p) {
       return {
+        r: p ? [p[0], p[1]] : 0,
         a: v[0],
         o: v[0] === 1 ? (v[0] === 2 ? -40 : 15) : v[1],
         m: v[0] === 1 ? v[1] : 720,
         d: v[2],
         p: v[3],
         y: v[4],
-        e: !!v[5]
+        e: !!(p ? p[2] : v[5])
       };
     }
+    function fromCfg(c) {
+      return c.timers.map(function (v, i) {
+        return toObj(v, (c.reps || [])[i]);
+      });
+    }
     function draft() {
-      return S.timers.map(toArr);
+      var any = false;
+      var reps = S.timers.map(function (t) {
+        if (t.r) any = true;
+        return t.r ? [t.r[0], t.r[1], t.e ? 1 : 0] : 0;
+      });
+      return { timers: S.timers.map(toArr), reps: any ? reps : [] };
     }
     // quiet: the reply matches the last one (apart from the clock), so the page stays as it is;
     // rebuilding it every 15 s re-created every row of the Schedule tab for nothing
@@ -581,8 +607,8 @@ if (typeof document !== "undefined")
       S.did = j.did;
       setTz(j.st.tz);
       if (!dirty()) {
-        S.timers = j.cfg.timers.map(toObj);
-        S.saved = JSON.stringify(j.cfg.timers);
+        S.timers = fromCfg(j.cfg);
+        S.saved = JSON.stringify(draft());
       }
       if (S.tab === "timers" && !S.prev) preview(); // opened on Timers (#timers)
       if (!quiet) render();
@@ -606,7 +632,9 @@ if (typeof document !== "undefined")
       if (!S.cfg) return; // the timers are not known yet: load() asks once they are
       clearTimeout(pvTimer);
       pvTimer = setTimeout(function () {
-        rpc("ShabbatPreview", { timers: draft(), n: 6 }, function (j) {
+        var d = draft();
+        d.n = 6;
+        rpc("ShabbatPreview", d, function (j) {
           S.prev = j.w;
           render();
         });
@@ -732,6 +760,9 @@ if (typeof document !== "undefined")
     }
     function mm(n) {
       return tr(L.min, n);
+    }
+    function hmn(n) {
+      return n % 60 ? mm(n) : tr(L.hrs, n / 60);
     }
     function hhmm(m) {
       return ("0" + Math.floor(m / 60)).slice(-2) + ":" + ("0" + (m % 60)).slice(-2);
@@ -1335,7 +1366,11 @@ if (typeof document !== "undefined")
           badge = L.badgeTime;
           sum = tr(L.daysOnFor, L.days[t.y], mm(t.d)) + ap;
         }
+        if (t.r) sum += tr(L.repSum, mm(t.r[0]), hmn(t.r[1]));
         if (t.d <= 0) sum = L.zeroDur;
+        var ds = t.r && t.d < 10 ? 1 : 5,
+          dmax = t.r ? t.r[0] - 1 : 240,
+          ls = t.r && t.r[1] < 120 ? 15 : 60;
         var lim = t.a === 2 ? [-180, 0] : [0, 180];
         var editor = !ed
           ? null
@@ -1383,12 +1418,50 @@ if (typeof document !== "undefined")
               stepper(
                 mm(t.d),
                 function () {
-                  upd(i, { d: clamp(t.d - 5, 0, 240) });
+                  upd(i, { d: clamp(t.d - (t.r && t.d <= 10 ? 1 : 5), t.r ? 1 : 0, dmax) });
                 },
                 function () {
-                  upd(i, { d: clamp(t.d + 5, 0, 240) });
+                  upd(i, { d: clamp(t.d + ds, 0, dmax) });
                 }
               ),
+              h("span", { cls: "lab" }, L.repeat),
+              pills(
+                [
+                  [0, L.repOpts[0]],
+                  [1, L.repOpts[1]]
+                ],
+                t.r ? 1 : 0,
+                function (v) {
+                  var d = clamp(t.d, 1, 240);
+                  upd(i, { d: d, r: v ? [Math.max(20, Math.ceil((d + 1) / 5) * 5), 240] : 0 });
+                }
+              ),
+              t.r
+                ? [
+                    h("span", { cls: "lab" }, L.every),
+                    stepper(
+                      mm(t.r[0]),
+                      function () {
+                        upd(i, { r: [clamp(t.r[0] - 5, Math.max(5, t.d + 1), 720), t.r[1]] });
+                      },
+                      function () {
+                        upd(i, { r: [clamp(t.r[0] + 5, 5, 720), t.r[1]] });
+                      }
+                    ),
+                    h("span", { cls: "lab" }, L.forLen),
+                    stepper(
+                      hmn(t.r[1]),
+                      function () {
+                        upd(i, {
+                          r: [t.r[0], clamp(t.r[1] - (t.r[1] <= 120 ? 15 : 60), 15, 1440)]
+                        });
+                      },
+                      function () {
+                        upd(i, { r: [t.r[0], clamp(t.r[1] + ls, 15, 1440)] });
+                      }
+                    )
+                  ]
+                : null,
               h("span", { cls: "lab" }, L.appliesTo),
               pills(
                 [
@@ -1483,7 +1556,7 @@ if (typeof document !== "undefined")
               {
                 cls: "addbtn",
                 onclick: function () {
-                  S.timers.push({ a: 1, o: 15, m: 540, d: 30, p: 0, y: 0, e: true });
+                  S.timers.push({ a: 1, o: 15, m: 540, d: 30, p: 0, y: 0, e: true, r: 0 });
                   S.editing = S.timers.length - 1;
                   render();
                   preview();
@@ -2317,26 +2390,42 @@ if (typeof document !== "undefined")
             ),
             h("span", { cls: "s" }, full(w.s) + L.arrow + full(w.e)),
             w.skip ? h("div", { cls: "warn" }, L.pvSkipped) : null,
-            !w.skip && !w.on.length ? h("span", { cls: "s" }, L.pvNone) : null,
-            w.on.map(function (o) {
-              var names = o[2].split("+").map(function (n) {
-                var t = S.timers[+n - 1];
-                return !t
-                  ? "#" + n
-                  : t.a === 0
-                    ? L.badgeCandles
-                    : t.a === 2
-                      ? L.badgeHavdalah
-                      : hhmm(t.m);
-              });
-              return h(
-                "div",
-                { cls: "slot" },
-                h("span", { cls: "tm" }, hm(o[0]) + "–" + hm(o[1])),
-                h("span", { cls: "grow" }, day(o[0]) + " · " + mm(Math.round((o[1] - o[0]) / 60))),
-                h("span", { cls: "who" }, names.join(" + "))
-              );
-            })
+            !w.skip && !w.on.length && !(w.rp || []).length
+              ? h("span", { cls: "s" }, L.pvNone)
+              : null,
+            // rp: a repeating timer in short, [first start, last end, label, every, duration]
+            w.on
+              .concat(w.rp || [])
+              .sort(function (a, b) {
+                return a[0] - b[0];
+              })
+              .map(function (o) {
+                var names = o[2].split("+").map(function (n) {
+                  var t = S.timers[+n - 1];
+                  return !t
+                    ? "#" + n
+                    : t.a === 0
+                      ? L.badgeCandles
+                      : t.a === 2
+                        ? L.badgeHavdalah
+                        : hhmm(t.m);
+                });
+                return h(
+                  "div",
+                  { cls: "slot" },
+                  h("span", { cls: "tm" }, hm(o[0]) + "–" + hm(o[1])),
+                  h(
+                    "span",
+                    { cls: "grow" },
+                    day(o[0]) +
+                      " · " +
+                      (o[3]
+                        ? tr(L.pulseEvery, mm(o[4]), mm(o[3]))
+                        : mm(Math.round((o[1] - o[0]) / 60)))
+                  ),
+                  h("span", { cls: "who" }, names.join(" + "))
+                );
+              })
           );
         })
       ];
@@ -2449,7 +2538,7 @@ if (typeof document !== "undefined")
                   {
                     cls: "btn ghost",
                     onclick: function () {
-                      S.timers = JSON.parse(S.saved).map(toObj);
+                      S.timers = fromCfg(JSON.parse(S.saved));
                       S.editing = -1;
                       render();
                       preview();
@@ -2462,8 +2551,8 @@ if (typeof document !== "undefined")
                   {
                     cls: "btn pri",
                     onclick: function () {
-                      rpc("ShabbatSet", { timers: draft() }, function (j) {
-                        S.saved = JSON.stringify(j.cfg.timers);
+                      rpc("ShabbatSet", draft(), function (j) {
+                        S.saved = JSON.stringify(draft());
                         S.editing = -1;
                         S.flash = L.saved;
                         load(j);

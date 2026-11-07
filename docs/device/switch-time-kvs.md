@@ -10,7 +10,9 @@ the device) or *design* (a rule we chose). Recheck on new firmware or other mode
 - The device has no time until SNTP syncs after power-up; the controller keeps the relay off
   until then.
 - KVS values are limited (~253 chars per value in practice); the timer config and the 15-entry
-  log are sized to fit (`test/sim.js` checks).
+  log are sized to fit (`test/sim.js` checks). Repeats (`r`, ~12 characters each) share the
+  timers' value: 12 plain timers or 4 timers with 3 repeats fit; 12 repeating timers do not,
+  and `ShabbatSet` answers "too many timers".
 - The page keeps its beta-channel choice in KVS key `shabbat_upd_beta`, written by the
   browser with `KVS.Set` (no script memory). It reads it with `KVS.GetMany {match}`, not
   `KVS.Get`, because `KVS.Get` of a missing key is an RPC error (HTTP 500, which the browser

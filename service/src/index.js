@@ -18,6 +18,9 @@
 //   {v: 1, now, auto: 0|1, w: [{t: "Shabbat", k: 1|2|3, s, e, x: 0|1, on: [[s, e], ...]}]}
 //   t title from the window table, k 1 Shabbat / 2 Yom Tov / 3 both, s-e the window
 //   (candle lighting to havdalah), x 1 = skipped once, on = relay ON intervals.
+// v 2 (devices with repeating timers) adds to each window
+//   rp: [[s, e, every, dur], ...]   a timer that turns on for dur minutes every `every`
+//   minutes, from s (its first pulse) to e (the end of its last pulse); v 1 is still accepted.
 import { renderPage, renderHome, renderMissing, renderQr } from "./page.js";
 
 export const LIMITS = {
@@ -91,7 +94,7 @@ export function cleanName(v) {
 }
 // Returns the normalized schedule, or an error string.
 export function validSchedule(d) {
-  if (!d || typeof d !== "object" || d.v !== 1) return "v";
+  if (!d || typeof d !== "object" || (d.v !== 1 && d.v !== 2)) return "v";
   if (!isInt(d.now, T_MIN, T_MAX)) return "now";
   if (d.auto !== 0 && d.auto !== 1) return "auto";
   if (!Array.isArray(d.w) || d.w.length > 8) return "w";
@@ -109,7 +112,18 @@ export function validSchedule(d) {
       if (!isInt(o[0], x.s, x.e) || !isInt(o[1], o[0] + 1, x.e)) return "on[] range";
       on.push([o[0], o[1]]);
     }
-    w.push({ t: x.t, k: x.k, s: x.s, e: x.e, x: x.x, on });
+    const y = { t: x.t, k: x.k, s: x.s, e: x.e, x: x.x, on };
+    if (d.v === 2) {
+      if (!Array.isArray(x.rp) || x.rp.length > 48) return "rp";
+      y.rp = [];
+      for (const o of x.rp) {
+        if (!Array.isArray(o) || o.length !== 4) return "rp[]";
+        if (!isInt(o[0], x.s, x.e) || !isInt(o[1], o[0] + 1, x.e)) return "rp[] range";
+        if (!isInt(o[2], 5, 720) || !isInt(o[3], 1, o[2] - 1)) return "rp[] every";
+        y.rp.push([o[0], o[1], o[2], o[3]]);
+      }
+    }
+    w.push(y);
   }
   // the device's time zone (optional: devices from before locations send none, Israel)
   if (d.tz !== undefined) {
@@ -119,9 +133,9 @@ export function validSchedule(d) {
     } catch (e) {
       return "tz";
     }
-    return { v: 1, now: d.now, auto: d.auto, tz: d.tz, w };
+    return { v: d.v, now: d.now, auto: d.auto, tz: d.tz, w };
   }
-  return { v: 1, now: d.now, auto: d.auto, w };
+  return { v: d.v, now: d.now, auto: d.auto, w };
 }
 
 async function readJson(req) {

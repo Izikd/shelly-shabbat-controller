@@ -10,7 +10,9 @@ A Cloudflare Worker (`src/index.js`, pages in `src/page.js`) with a D1 database
 1. The settings page (browser) calls `POST /api/register {name}` and gets `{id, key, url}`,
    then hands `id` and `key` to the device (`Script.ShabbatPub`).
 2. The device sends `PUT /api/s/<id>` with `Authorization: Bearer <key>` and the next 6
-   windows and their ON times: once a day (23-25 h apart, so devices spread out), ~30 s after
+   windows and their ON times (schedule `v: 1`; `v: 2` from devices with repeating timers adds
+   each window's repeats in short, `rp: [[first start, last end, every, duration]]`, shown as
+   one line; see `service/src/index.js`): once a day (23-25 h apart, so devices spread out), ~30 s after
    every settings change and after a restart; failures retry after 5, 20, 45... min (max 6 h).
    The reply is 204 with no body, so it costs the script almost no memory.
 3. Anyone with the link opens `GET /s/<id>`: plain HTML, no script, Hebrew or English

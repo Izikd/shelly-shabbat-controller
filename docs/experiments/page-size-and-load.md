@@ -155,6 +155,14 @@ per round trip). Entries are dated, newest last; keep the method so a test can b
   `mem_used` 17,136, `mem_peak` 23,884 (after one forecast; the controller code did not
   change, forecasts have peaked at ~23.2-23.9 KB), no errors.
 
+## 2026-11-07 - Repeating timers
+- **Change**: a timer can repeat (on for its duration every N minutes, for a length); the
+  editor gets a Repeat choice and two steppers, the forecast one line per repeat.
+- **Measured** (local builds only, no hardware yet): page 27,421 -> 28,056 bytes (+635),
+  still inside the 28,672-byte budget (616 bytes left). Controller 17,642 -> 20,116 bytes
+  (+2,474: the pulses are worked out on the fly, never listed, so no object per pulse);
+  `mem_peak` with repeats is still to be measured on the device.
+
 ## Ideas not tried yet
 - Inline the first status into the HTML (saves one round trip; costs controller work per
   request).

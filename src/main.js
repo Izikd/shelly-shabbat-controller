@@ -15,9 +15,10 @@
 //
 // RPC API (Script.<name>, routed by "id" = this script's id):
 //   ShabbatGet                 -> {cfg, st}
-//   ShabbatSet {timers?, auto?, skip?, test?, reload?}  -> {cfg, st}   (validated, saved;
-//     reload: read shabbat_dates again, answered once it is read)
-//   ShabbatPreview {timers?, n?} -> {w: [{t, k, s, e, skip, on: [[s, e, "1+3"]]}]}
+//   ShabbatSet {timers?, reps?, auto?, skip?, test?, reload?}  -> {cfg, st}   (validated,
+//     saved; reload: read shabbat_dates again, answered once it is read)
+//   ShabbatPreview {timers?, reps?, n?}
+//     -> {w: [{t, k, s, e, skip, on: [[s, e, "1+3"]], rp: [[s, e, "2", every, dur]]}]}
 //   ShabbatPub {u?, i?, k?, off?, send?} -> {on, u, i, k, ok, err, due, busy}
 //     publishing to the schedule service (service/): set it up / stop / send now / state
 //
@@ -29,6 +30,10 @@
 //   applies  0 = Shabbat & Yom Tov, 1 = Shabbat only, 2 = Yom Tov only
 //   days     (clock timers) 0 = every day, 1 = first day, 2 = last day
 //   enabled  0/1
+// Repeat (reps[i], for timer i; 0 = none): [every, length, enabled]
+//   the timer turns on for its duration every `every` minutes (5..720, more than the
+//   duration), from its start for `length` minutes (1..1440). The timer itself is stored
+//   disabled, so older releases, which do not know repeats, leave it off; `enabled` is here.
 // Everything is clipped to the window.
 // =============================================================================
 
@@ -72,7 +77,7 @@ let datesId = -1; // id of the shabbat_dates script
 // ---------------- Globals ----------------
 let ALPHA = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+-";
 
-let cfg = null; // {t: timers, a: auto 0/1, s: skipped window start (0 = none)}
+let cfg = null; // {t: timers, a: auto 0/1, s: skipped window start (0 = none), r: repeats}
 let testTime = 0; // test clock (UTC s), RAM only
 let saving = false,
   saveDirty = false;
@@ -172,7 +177,8 @@ function pushClipped(list, s, e, w, label) {
 }
 
 // All ON intervals of window w for timers tl, merged & sorted: [{s,e,l}]
-// (l = 1-based timer numbers, e.g. "1+3")
+// (l = 1-based timer numbers, e.g. "1+3"). Repeating timers are stored disabled, so they are
+// not here: their pulses are worked out on the fly (repScan), never listed (script memory).
 function windowPlan(w, tl) {
   let list = [];
   let ls = w.s + tzOffset(w.s);
@@ -219,6 +225,114 @@ function windowPlan(w, tl) {
   return out;
 }
 
+// ---------------- Repeating timers ----------------
+// Results in globals, so that no object is made per pulse.
+let pS = 0,
+  pE = 0; // pulseAt: the pulse (pE = 0: none)
+let sS = 0,
+  sE = 0,
+  sL = ""; // segAt / take: the ON stretch (sE = 0: none)
+
+// The pulse of a repeat (first pulse at a, block end b, period P s, pulse D s), clipped to
+// window w, that contains x or starts after it
+function pulseAt(w, a, b, P, D, x) {
+  pE = 0;
+  if (b > w.e) b = w.e;
+  let y = x;
+  if (y < a) y = a;
+  if (y < w.s) y = w.s;
+  if (y >= b) return;
+  let s = a + Math.floor((y - a) / P) * P;
+  let e = s + D;
+  if (e > b) e = b;
+  if (e <= y) {
+    s += P;
+    e = s + D;
+    if (e > b) e = b;
+  }
+  if (s >= b) return;
+  if (s < w.s) s = w.s;
+  pS = s;
+  pE = e;
+}
+
+// Adds a candidate interval (e > x) to the stretch sS..sE: one that contains x wins over
+// one that starts later; two that contain x, or start together, are merged
+function take(s, e, l, x) {
+  let a = s <= x;
+  let b = sS <= x;
+  if (!sE || (a && !b) || (!a && !b && s < sS)) {
+    sS = s;
+    sE = e;
+    sL = l;
+    return;
+  }
+  if (a !== b || (!a && s > sS)) return;
+  if (s < sS) sS = s;
+  if (e > sE) sE = e;
+  if (("+" + sL + "+").indexOf("+" + l + "+") < 0) sL += "+" + l;
+}
+
+// The repeats of timers tl (rl = repeats) in window w. out = null: their pulse containing x
+// or the next one goes to take(); else one block per repeat [first pulse start, last pulse
+// end, label, every, duration] is pushed to out (the forecast and the public page)
+function repScan(w, tl, rl, x, out) {
+  let d0 = Math.floor((w.s + tzOffset(w.s)) / 86400);
+  let d1 = Math.floor((w.e + tzOffset(w.e)) / 86400);
+  for (let i = 0; i < rl.length; i++) {
+    let p = rl[i];
+    let v = tl[i];
+    if (!p || !p[2]) continue;
+    if (v[3] === 1 && w.k === 2) continue;
+    if (v[3] === 2 && w.k === 1) continue;
+    let P = p[0] * 60;
+    let D = v[2] * 60;
+    let lo = v[0] === 1 ? d0 - 1 : 0;
+    let hi = v[0] === 1 ? d1 : 0;
+    for (let d = lo; d <= hi; d++) {
+      let a = v[0] === 0 ? w.s + v[1] * 60 : w.e + v[1] * 60;
+      if (v[0] === 1) {
+        if (v[4] === 1 && d - d0 > 1) continue;
+        if (v[4] === 2 && d !== d1) continue;
+        a = localToUtc(d * 86400 + v[1] * 60);
+      }
+      let b = a + p[1] * 60;
+      pulseAt(w, a, b, P, D, out ? a : x);
+      if (!pE) continue;
+      if (!out) {
+        take(pS, pE, "" + (i + 1), x);
+        continue;
+      }
+      let fs = pS;
+      if (b > w.e) b = w.e;
+      pulseAt(w, a, b, P, D, a + Math.floor((b - 1 - a) / P) * P);
+      out.push([fs, pE, "" + (i + 1), p[0], v[2]]);
+    }
+  }
+}
+
+// The ON stretch of window w that contains x, else the next one: sS..sE, labels sL (sE = 0:
+// none). plan = windowPlan(w, tl) (the timers that do not repeat); the repeats' pulses are
+// added, and the stretch is followed through everything that touches or overlaps its end.
+function segAt(w, plan, tl, rl, x) {
+  sE = 0;
+  for (let i = 0; i < plan.length; i++) {
+    if (plan[i].e > x) {
+      take(plan[i].s, plan[i].e, plan[i].l, x);
+      break;
+    }
+  }
+  repScan(w, tl, rl, x, null);
+  for (let n = 0; n < 100 && sE; n++) {
+    let e = sE;
+    for (let i = 0; i < plan.length; i++) {
+      if (plan[i].s <= e && plan[i].e > e) take(plan[i].s, plan[i].e, plan[i].l, e);
+    }
+    repScan(w, tl, rl, e, null);
+    if (sE === e) break;
+  }
+}
+
 // ---------------- Config ----------------
 function validTimer(v) {
   if (!v || v.length !== 6) return false;
@@ -247,6 +361,32 @@ function validTimers(tl) {
   return true;
 }
 
+// a repeat for timer v: 0, or [every, length, enabled]; the timer itself is stored disabled
+function validRep(p, v) {
+  if (p === 0) return true;
+  if (!p || p.length !== 3) return false;
+  for (let i = 0; i < 3; i++)
+    if (typeof p[i] !== "number" || p[i] !== Math.floor(p[i])) return false;
+  if (p[0] < 5 || p[0] > 720 || p[1] < 1 || p[1] > 1440) return false;
+  if (v[5] !== 0 || v[2] < 1 || v[2] >= p[0]) return false;
+  return p[2] === 0 || p[2] === 1;
+}
+
+// none ([]), or one per timer
+function validReps(rl, tl) {
+  if (!rl || typeof rl.length !== "number") return false;
+  if (rl.length && rl.length !== tl.length) return false;
+  for (let i = 0; i < rl.length; i++) if (!validRep(rl[i], tl[i])) return false;
+  return true;
+}
+
+// the saved settings; r only when there are repeats (KVS values are short)
+function cfgJson() {
+  let o = { t: cfg.t, a: cfg.a, s: cfg.s };
+  if (cfg.r.length) o.r = cfg.r;
+  return JSON.stringify(o);
+}
+
 function onKvsSaved(res, err, msg) {
   saving = false;
   if (err) console.log("KVS save failed:", err, msg);
@@ -260,7 +400,7 @@ function saveCfg() {
   }
   saving = true;
   saveDirty = false;
-  Shelly.call("KVS.Set", { key: CFG.kvsKey, value: JSON.stringify(cfg) }, onKvsSaved);
+  Shelly.call("KVS.Set", { key: CFG.kvsKey, value: cfgJson() }, onKvsSaved);
 }
 
 // ---------------- Main loop ----------------
@@ -409,25 +549,17 @@ function tick() {
   let pw = [cur, nxt, getWin(idx + (cur ? 2 : 1))];
   for (let k = 0; k < 3 && !upcoming && !on; k++) {
     if (!pw[k] || pw[k].s === cfg.s) continue; // skipped window
-    let plan = windowPlan(pw[k], cfg.t);
-    for (let i = 0; i < plan.length; i++) {
-      let p = plan[i];
-      if (p.s <= t && t < p.e) {
-        on = p;
-        break;
-      }
-      if (p.s > t) {
-        upcoming = p;
-        break;
-      }
-    }
+    segAt(pw[k], windowPlan(pw[k], cfg.t), cfg.t, cfg.r, t);
+    if (!sE) continue;
+    if (sS <= t) on = [sS, sE, sL];
+    else upcoming = [sS, sE, sL];
   }
-  if (on) status.on = [on.s, on.e, on.l];
-  if (upcoming) status.nextOn = [upcoming.s, upcoming.e, upcoming.l];
+  status.on = on;
+  status.nextOn = upcoming;
 
   dbg("tick " + fmtTime(t), !!on);
   if (auto) {
-    applyRelay(!!on, on ? on.e : 0, testTime ? "x" : "a");
+    applyRelay(!!on, on ? on[1] : 0, testTime ? "x" : "a");
     status.relay = manualHold !== null ? lastOut : !!on; // report the state just commanded
   } else lastWanted = null;
   status.manual = manualHold !== null;
@@ -438,7 +570,7 @@ function snapshot() {
   let lg = "";
   for (let i = 0; i < logArr.length; i++) lg += (i ? "," : "") + logArr[i];
   return {
-    cfg: { timers: cfg.t, auto: cfg.a !== 0, skip: cfg.s },
+    cfg: { timers: cfg.t, reps: cfg.r, auto: cfg.a !== 0, skip: cfg.s },
     st: status,
     log: lg,
     base: TBL_BASE,
@@ -463,11 +595,14 @@ function doSet(req, params) {
   }
   let changed = false;
   if (params.timers !== undefined) {
-    if (!validTimers(params.timers)) {
+    // new timers replace the repeats too (the repeats belong to the timers by position)
+    let rl = params.reps === undefined ? [] : params.reps;
+    if (!validTimers(params.timers) || !validReps(rl, params.timers)) {
       req.error(-1, "invalid timers");
       return;
     }
     cfg.t = params.timers;
+    cfg.r = rl;
     changed = true;
   }
   if (params.auto !== undefined) {
@@ -491,8 +626,7 @@ function doSet(req, params) {
     lastWanted = null;
   }
   if (changed) {
-    let js = JSON.stringify(cfg);
-    if (js.length > 250) {
+    if (cfgJson().length > 250) {
       req.error(-1, "too many timers");
       return;
     }
@@ -516,8 +650,10 @@ function doPreview(req, params) {
     return;
   }
   let tl = cfg.t;
+  let rl = cfg.r;
   if (params.timers !== undefined) {
-    if (!validTimers(params.timers)) {
+    rl = params.reps === undefined ? [] : params.reps;
+    if (!validTimers(params.timers) || !validReps(rl, params.timers)) {
       req.error(-1, "invalid timers");
       return;
     }
@@ -535,11 +671,13 @@ function doPreview(req, params) {
     if (!w) break;
     let skip = w.s === cfg.s;
     let on = [];
+    let rp = [];
     if (!skip) {
       let plan = windowPlan(w, tl);
       for (let i = 0; i < plan.length; i++) on.push([plan[i].s, plan[i].e, plan[i].l]);
+      repScan(w, tl, rl, 0, rp);
     }
-    out.push({ t: w.title, k: w.k, s: w.s, e: w.e, skip: skip, on: on });
+    out.push({ t: w.title, k: w.k, s: w.s, e: w.e, skip: skip, on: on, rp: rp });
   }
   req.result({ w: out, now: t });
 }
@@ -631,11 +769,15 @@ function pubCheck() {
 
 // The schedule, as the service expects it (see service/src/index.js):
 // {v: 1, now, auto, tz, w: [{t, k, s, e, x: skipped 0/1, on: [[s, e], ...]}]} (tz: the place's
-// time zone, for the page's times; left out with no table)
+// time zone, for the page's times; left out with no table). With repeating timers v is 2 and
+// each window also has rp: [[first pulse start, last pulse end, every, duration], ...]
+// (minutes), the repeats in short; a service that knows only v 1 then refuses the schedule.
 // Assembled as a string, without building the objects first (script memory).
 function pubBody(t) {
   let idx = findWin(t);
-  let out = '{"v":1,"now":' + t + ',"auto":' + (cfg.a !== 0 ? 1 : 0);
+  let v = 1;
+  for (let i = 0; i < cfg.r.length; i++) if (cfg.r[i] && cfg.r[i][2]) v = 2;
+  let out = '{"v":' + v + ',"now":' + t + ',"auto":' + (cfg.a !== 0 ? 1 : 0);
   if (okStr(TBL_TZ, 1, 64)) out += ',"tz":"' + TBL_TZ + '"';
   out += ',"w":[';
   for (let n = 0; n < CFG.pubN; n++) {
@@ -649,9 +791,22 @@ function pubBody(t) {
     for (let i = 0; i < plan.length; i++) {
       out += (i ? "," : "") + "[" + plan[i].s + "," + plan[i].e + "]";
     }
-    out += "]}";
+    out += "]";
+    if (v === 2) out += ',"rp":' + pubReps(win, x);
+    out += "}";
   }
   return out + "]}";
+}
+
+function pubReps(win, x) {
+  let rp = [];
+  if (!x) repScan(win, cfg.t, cfg.r, 0, rp);
+  let out = "[";
+  for (let i = 0; i < rp.length; i++) {
+    let b = rp[i];
+    out += (i ? "," : "") + "[" + b[0] + "," + b[1] + "," + b[3] + "," + b[4] + "]";
+  }
+  return out + "]";
 }
 
 function pubSend() {
@@ -806,11 +961,12 @@ let bootStep = 0;
 let BOOT = [
   function () {
     let c = bootLoaded;
-    if (c && validTimers(c.t)) cfg = { t: c.t, a: c.a === 0 ? 0 : 1, s: c.s || 0 };
+    if (c && validTimers(c.t)) cfg = { t: c.t, a: c.a === 0 ? 0 : 1, s: c.s || 0, r: [] };
     else {
-      cfg = { t: DEFAULT_TIMERS, a: 1, s: 0 };
+      cfg = { t: DEFAULT_TIMERS, a: 1, s: 0, r: [] };
       console.log("Using default timers");
     }
+    if (c && c.r && validTimers(c.t) && validReps(c.r, c.t)) cfg.r = c.r;
   },
   function () {
     HTTPServer.registerEndpoint("ui", onUi);

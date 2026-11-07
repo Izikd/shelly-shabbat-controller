@@ -245,7 +245,9 @@ function wallToUtc(dayNum, minutes) {
   }
   return dayNum * 86400 + minutes * 60 - offs[1];
 }
-function refOn(t, timers, skipStart) {
+// reps: repeats per timer (0 or [every, length, enabled]); a repeating timer is on for its
+// duration every `every` minutes from its start, for `length` minutes
+function refOn(t, timers, skipStart, reps) {
   const r = ranges.find((x) => x[0] <= t && t < x[1]);
   if (!r || r[0] === skipStart) return false;
   const [S, E, , K] = r;
@@ -253,19 +255,27 @@ function refOn(t, timers, skipStart) {
   const d0 = localDayNum(S),
     d1 = localDayNum(E),
     n = d1 - d0;
-  for (const [a, v, d, p, y, en] of timers) {
+  const on = (st, d, r) => {
+    if (!r) return inI(st, st + d * 60);
+    for (let ps = st; ps < st + r[1] * 60; ps += r[0] * 60)
+      if (inI(ps, Math.min(ps + d * 60, st + r[1] * 60))) return true;
+    return false;
+  };
+  for (let i = 0; i < timers.length; i++) {
+    const [a, v, d, p, y] = timers[i];
+    const r = reps && reps[i];
+    const en = r ? r[2] : timers[i][5];
     if (!en || !d) continue;
     if (p === 1 && K === 2) continue;
     if (p === 2 && K === 1) continue;
-    if (a === 0 && inI(S + v * 60, S + (v + d) * 60)) return true;
-    if (a === 2 && inI(E + v * 60, E + (v + d) * 60)) return true;
+    if (a === 0 && on(S + v * 60, d, r)) return true;
+    if (a === 2 && on(E + v * 60, d, r)) return true;
     if (a === 1)
       for (let day = d0 - 1; day <= d1; day++) {
         const k = day - d0;
         if (y === 1 && k > 1) continue;
         if (y === 2 && k !== n) continue;
-        const st = wallToUtc(day, v);
-        if (inI(st, st + d * 60)) return true;
+        if (on(wallToUtc(day, v), d, r)) return true;
       }
   }
   return false;
@@ -314,9 +324,16 @@ function refOn(t, timers, skipStart) {
   d.call("ShabbatSet", {
     timers: [
       [1, 600, 30, 0, 0, 1],
-      [0, 0, 60, 0, 0, 1]
-    ]
+      [0, 0, 60, 0, 0, 1],
+      [1, 540, 5, 0, 0, 0]
+    ],
+    reps: [0, 0, [20, 600, 1]]
   });
+  for (let t = 1762525200; t < 1762525200 + 2 * 86400; t += 600) {
+    d.now = t;
+    d.tick();
+  }
+  d.call("ShabbatPub", { send: true });
   d.call("ShabbatPreview", { n: 8 });
   d.call("ShabbatGet", {});
   check(maxDepth <= 5, "max JS call depth " + maxDepth + ": " + maxPath.join(" > "));
@@ -465,9 +482,16 @@ useRef("pt");
 }
 
 // ---------- T3: relay sweep vs reference ----------
-function sweep(timers, label, skipIdx, place) {
+// reps: repeats saved with the timers; nWin: only the first nWin windows (repeats are slower)
+function sweep(timers, label, skipIdx, place, reps, nWin) {
   useRef(place || "pt");
-  const kvs = timers ? { shabbat_elev_cfg: JSON.stringify({ t: timers, a: 1, s: 0 }) } : {};
+  const kvs = timers
+    ? {
+        shabbat_elev_cfg: JSON.stringify(
+          Object.assign({ t: timers, a: 1, s: 0 }, reps && { r: reps })
+        )
+      }
+    : {};
   const dev = makeDevice({ kvs, now: ranges[0][0] - 86400, dates: DATES[place || "pt"] });
   timers = timers || vm.runInContext("DEFAULT_TIMERS", dev.sb);
   let skip = 0;
@@ -475,7 +499,7 @@ function sweep(timers, label, skipIdx, place) {
     onMin = 0,
     transitions = 0,
     prev = false;
-  const t1 = ranges[ranges.length - 1][1] + 86400;
+  const t1 = ranges[Math.min(nWin || ranges.length, ranges.length) - 1][1] + 86400;
   let t = ranges[0][0] - 7200,
     ri = 0;
   while (t < t1) {
@@ -489,7 +513,7 @@ function sweep(timers, label, skipIdx, place) {
     }
     dev.now = t;
     dev.tick();
-    const exp = refOn(t, timers, skip);
+    const exp = refOn(t, timers, skip, reps);
     if (dev.relay !== exp) {
       if (mism++ < 5)
         console.log(
@@ -538,6 +562,29 @@ if (!process.env.QUICK) {
   sweep(null, "Sydney: southern DST", undefined, "syd");
   useRef("pt");
 }
+// repeating timers: every anchor, clipped by the window and the length, overlapping a plain
+// timer and touching it, Shabbat only, a disabled repeat, two-day Yom Tov and DST
+const REP_T = [
+  [0, 10, 3, 0, 0, 0],
+  [1, 600, 5, 0, 0, 0],
+  [1, 660, 30, 0, 0, 1],
+  [2, -90, 10, 0, 0, 0],
+  [1, 1320, 7, 1, 1, 0],
+  [1, 900, 10, 0, 0, 0],
+  [0, 60, 4, 0, 0, 0]
+];
+const REP_R = [
+  [20, 240, 1],
+  [15, 120, 1],
+  0,
+  [30, 180, 1],
+  [25, 300, 1],
+  [20, 60, 0],
+  [17, 1440, 1]
+];
+sweep(REP_T, "repeats", 3, "pt", REP_R, process.env.QUICK ? 6 : 40);
+if (!process.env.QUICK) sweep(REP_T, "repeats: New York", undefined, "ny", REP_R, 40);
+useRef("pt");
 
 // ---------- T4: RPC API ----------
 {
@@ -633,6 +680,103 @@ if (!process.env.QUICK) {
   );
   check(p2.d.w[0].on[0][2] === "1", "labels are timer numbers");
   console.log("T4 RPC API: validation, save, auto, test, skip, reboot, preview");
+}
+
+// ---------- T8: repeating timers ----------
+{
+  const SAT = 1762596000; // Sat 08/11/2025 12:00 Israel (window 16:22 Fri -> 17:22 Sat)
+  const dev = makeDevice({ now: SAT - 3600 });
+  const T = [
+    [1, 720, 30, 0, 0, 1],
+    [1, 750, 5, 0, 0, 0]
+  ];
+  for (const bad of [
+    [[20, 120, 1]], // reps one per timer
+    [
+      [20, 120, 1],
+      [20, 120, 1]
+    ], // the repeating timer must be stored disabled
+    [0, [5, 120, 1]], // every must be longer than the duration
+    [0, [4, 120, 1]],
+    [0, [721, 120, 1]],
+    [0, [20, 1441, 1]],
+    [0, [20, 0, 1]],
+    [0, [20, 120, 2]],
+    [0, [20, 120]],
+    [0, [20.5, 120, 1]],
+    "x"
+  ]) {
+    const r = dev.call("ShabbatSet", { timers: T, reps: bad });
+    check(!r.ok, "rejects reps " + JSON.stringify(bad));
+  }
+  check(
+    !dev.call("ShabbatSet", { timers: [[1, 750, 0, 0, 0, 0]], reps: [[20, 120, 1]] }).ok,
+    "rejects a repeat of duration 0"
+  );
+  let r = dev.call("ShabbatSet", { timers: T, reps: [0, [20, 120, 1]] });
+  const saved = JSON.parse(dev.kvs.shabbat_elev_cfg);
+  check(r.ok && JSON.stringify(r.d.cfg.reps) === "[0,[20,120,1]]", "reps returned");
+  check(saved.t[1][5] === 0 && JSON.stringify(saved.r) === "[0,[20,120,1]]", "saved: t + r");
+  // what an older release reads: the timer is disabled, so it never turns on
+  check(
+    saved.t.every((v) => v.length === 6 && v.every(Number.isInteger)),
+    "older releases still accept the timers"
+  );
+  // 12:00-12:30 plain; pulses 12:30-12:35 (touches), 12:50, 13:10 ... 14:10 (5 min each)
+  dev.now = SAT + 600;
+  dev.tick();
+  let g = dev.call("ShabbatGet", {}).d;
+  check(
+    dev.relay && g.st.on[1] === SAT + 2100 && g.st.on[2] === "1+2",
+    "touching pulse extends the ON stretch: " + JSON.stringify(g.st.on)
+  );
+  check(dev.toggleAfter === 1500 + 5, "auto-off at the end of the stretch: " + dev.toggleAfter);
+  dev.now = SAT + 2200; // 12:36:40
+  dev.tick();
+  g = dev.call("ShabbatGet", {}).d;
+  check(
+    !dev.relay && JSON.stringify(g.st.nextOn) === JSON.stringify([SAT + 3000, SAT + 3300, "2"]),
+    "between pulses: OFF, next pulse 12:50"
+  );
+  dev.now = SAT + 3060;
+  dev.tick();
+  check(dev.relay && dev.toggleAfter === 240 + 5, "pulse ON with auto-off");
+  // preview: one line per repeat
+  const pv = dev.call("ShabbatPreview", { n: 1, from: SAT - 3600 }).d.w[0];
+  check(
+    JSON.stringify(pv.rp) === JSON.stringify([[SAT + 1800, SAT + 8100, "2", 20, 5]]) &&
+      pv.on.length === 1,
+    "preview repeat block: " + JSON.stringify(pv.rp)
+  );
+  // a draft without reps clears them; the stored copy has no r
+  dev.call("ShabbatSet", { timers: T.slice(0, 1) });
+  check(!("r" in JSON.parse(dev.kvs.shabbat_elev_cfg)), "no repeats: no r saved");
+  // survives a reboot; an invalid r alone is dropped, the timers kept
+  dev.call("ShabbatSet", { timers: T, reps: [0, [20, 120, 1]] });
+  const dev2 = makeDevice({ kvs: dev.kvs, now: SAT + 3060 });
+  dev2.tick();
+  check(dev2.relay && dev2.call("ShabbatGet", {}).d.cfg.reps.length === 2, "reps survive reboot");
+  const kv = JSON.parse(dev.kvs.shabbat_elev_cfg);
+  kv.r = [0, [3, 120, 1]];
+  const dev3 = makeDevice({ kvs: { shabbat_elev_cfg: JSON.stringify(kv) }, now: SAT + 3060 });
+  g = dev3.call("ShabbatGet", {}).d;
+  check(g.cfg.timers.length === 2 && g.cfg.reps.length === 0, "bad r dropped, timers kept");
+  // KVS space: a typical set with repeats fits, too many is refused
+  const T4 = [
+    [0, 15, 3, 0, 0, 0],
+    [1, 600, 5, 0, 0, 0],
+    [2, -40, 10, 0, 0, 0],
+    [1, 720, 60, 0, 0, 1]
+  ];
+  r = dev.call("ShabbatSet", {
+    timers: T4,
+    reps: [[20, 1440, 1], [15, 240, 1], [30, 180, 1], 0]
+  });
+  check(r.ok && dev.kvs.shabbat_elev_cfg.length <= 253, "4 timers with repeats fit KVS");
+  const T12 = Array.from({ length: 12 }, () => [1, 600, 5, 0, 0, 0]);
+  r = dev.call("ShabbatSet", { timers: T12, reps: T12.map(() => [20, 1440, 1]) });
+  check(!r.ok && r.msg === "too many timers", "12 repeating timers: too long for KVS");
+  console.log("T8 repeating timers: validation, relay, auto-off, preview, save, reboot: OK");
 }
 
 // ---------- T6: firmware auto-off, manual hold, event log ----------
@@ -827,6 +971,35 @@ if (!process.env.QUICK) {
   });
   dev3.tick();
   check(dev3.reqs.length === 1, "12 timers: sent");
+  // repeating timers: v 2, the repeats in short
+  const dev4 = makeDevice({
+    kvs: {
+      shabbat_elev_cfg: JSON.stringify({
+        t: [
+          [1, 720, 60, 0, 0, 1],
+          [1, 600, 5, 0, 0, 0]
+        ],
+        a: 1,
+        s: 0,
+        r: [0, [20, 240, 1]]
+      }),
+      shabbat_pub: JSON.stringify(P)
+    },
+    now: FRI
+  });
+  dev4.tick();
+  const b4 = JSON.parse(dev4.reqs[0].body);
+  const pv4 = dev4.call("ShabbatPreview", { n: 6 }).d.w;
+  check(
+    b4.v === 2 &&
+      b4.w.every(
+        (w, i) =>
+          JSON.stringify(w.rp) === JSON.stringify(pv4[i].rp.map((o) => [o[0], o[1], o[3], o[4]]))
+      ) &&
+      b4.w[0].rp.length === 1 &&
+      b4.w[0].on.length === 1,
+    "v 2 body: repeats in short " + JSON.stringify(b4.w[0].rp)
+  );
   console.log(
     "T7 publishing: OK (body " +
       q.body.length +

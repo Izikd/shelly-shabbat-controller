@@ -133,9 +133,11 @@ so a reload comes back to it.
   on/off, skip next window (one-off), relay log. Times are shown in the location's time zone.
 - **Timers** (up to 12): start point candle lighting (+min) / fixed time / havdalah (-min),
   duration, applies to Shabbat & Yom Tov / Shabbat only / Yom Tov only, and for fixed-time
-  timers every day / first day / last day of the window. All clipped to the window. Below
-  them, the **coming relay times**: the next 6 windows with merged ON times, computed by the
-  device for the unsaved draft. Changes are applied only with "Save to device".
+  timers every day / first day / last day of the window. A timer can also **repeat**: on for
+  its duration every 5-720 minutes, from its start for up to 24 hours (an elevator, a light,
+  a fan, keeping an urn warm). All clipped to the window. Below them, the **coming relay
+  times**: the next 6 windows with merged ON times, a repeating timer as one line ("3 min
+  every 20 min"), computed by the device for the unsaved draft. Changes are applied only with "Save to device".
 - **Schedule**: the windows of the coming year, by year ("Show all years" for the whole
   table), holidays-only filter, past windows.
 - **Settings** (set up once): location, test time (simulated clock, RAM only), public
@@ -156,16 +158,21 @@ so a reload comes back to it.
   the page. The relay never depends on it. Service: `service/` (see `service/README.md`).
 
 ## Device API (Script.<method>, params include `id` = controller script id)
-- `ShabbatGet` -> `{cfg:{timers, auto, skip}, st:{now, test, synced, auto, relay, on, cur, next, nextOn, end, loc, tz}}`
+- `ShabbatGet` -> `{cfg:{timers, reps, auto, skip}, st:{now, test, synced, auto, relay, on, cur, next, nextOn, end, loc, tz}}`
   (`loc`: place name, `""` when no location is set; `tz`: its time zone; `end`: end of the times)
-- `ShabbatSet {timers?, auto?, skip?, test?, resume?, reload?}` -> same as Get (validated, saved
-  to KVS); `reload` reads `shabbat_dates` again and answers once it is read
+- `ShabbatSet {timers?, reps?, auto?, skip?, test?, resume?, reload?}` -> same as Get (validated,
+  saved to KVS; `timers` without `reps` removes the repeats); `reload` reads `shabbat_dates`
+  again and answers once it is read
 - Get/Set also return `log` ("<minutes since base><1|0><cause>,..."), `base` and `did` (the id
   of `shabbat_dates`, -1 if none)
-- `ShabbatPreview {timers?, n?}` -> `{w:[{t, k, s, e, skip, on:[[s, e, "1+3"]]}], now}`
+- `ShabbatPreview {timers?, reps?, n?}` -> `{w:[{t, k, s, e, skip, on:[[s, e, "1+3"]],
+  rp:[[first start, last end, "2", every, duration]]}], now}` (`rp`: the repeating timers)
 - `ShabbatPub {u?, i?, k?, off?, send?}` -> `{on, u, i, k, ok, err, due, busy}`: publishing to
   the schedule service (service URL, page id, write key; saved in KVS `shabbat_pub`)
 - Timer = `[anchor 0/1/2, value, duration, applies 0/1/2, days 0/1/2, enabled 0/1]`
+- Repeats (`reps`): `[]`, or one entry per timer: `0`, or `[every 5..720, length 1..1440,
+  enabled 0/1]` (minutes; every > duration >= 1). A repeating timer itself is stored with
+  enabled 0, so an older release, which does not know repeats, leaves it off.
 
 ## Development
 Edit `src/`; `dist/` is build output and is not committed. Sources are formatted with Prettier.

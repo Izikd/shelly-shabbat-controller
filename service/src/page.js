@@ -42,6 +42,7 @@ const T = {
     nowWin: "עכשיו",
     onNow: "פועל עכשיו",
     min: "{0} דק׳",
+    every: "{0} כל {1}",
     hm: "{0} שע׳ {1} דק׳",
     qr: "קוד QR להדפסה",
     foot: "שעון שבת ל-Shelly · הדף מתעדכן אוטומטית מהמכשיר",
@@ -80,6 +81,7 @@ const T = {
     nowWin: "now",
     onNow: "on now",
     min: "{0} min",
+    every: "{0} every {1}",
     hm: "{0} h {1} min",
     qr: "QR code to print",
     foot: "Shabbat clock for Shelly · this page updates itself from the device",
@@ -180,15 +182,20 @@ function windowCard(w, now, L, lang) {
   const cur = w.s <= now && now < w.e;
   let slots = "";
   if (w.x) slots = `<div class="warn">${esc(L.skipped)}</div>`;
-  else if (!w.on.length) slots = `<span class="s">${esc(L.noOn)}</span>`;
+  else if (!w.on.length && !(w.rp || []).length) slots = `<span class="s">${esc(L.noOn)}</span>`;
   else
+    // rp (v 2): repeating timers in short, [first start, last end, every, duration] (minutes)
     slots = w.on
+      .concat(w.rp || [])
       .filter((o) => o[1] > now)
+      .sort((a, b) => a[0] - b[0])
       .map(
         (o) =>
           `<div class="slot"><span class="tm">${hm(o[0])}–${hm(o[1])}</span>` +
-          `<span class="grow">${esc(day(o[0], L))} · ${esc(dur(o[1] - o[0], L))}</span>` +
-          (o[0] <= now ? `<span class="on">${esc(L.onNow)}</span>` : "") +
+          `<span class="grow">${esc(day(o[0], L))} · ${esc(
+            o.length > 2 ? tr(L.every, tr(L.min, o[3]), tr(L.min, o[2])) : dur(o[1] - o[0], L)
+          )}</span>` +
+          (o[0] <= now && o.length === 2 ? `<span class="on">${esc(L.onNow)}</span>` : "") +
           `</div>`
       )
       .join("");

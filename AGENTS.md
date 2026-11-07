@@ -152,7 +152,10 @@ Each has a reason in `docs/device/` and `docs/experiments/`.
   `t`, `a`, `s` of `shabbat_elev_cfg` and falls back to its default timers (until the next
   save) if `t` does not pass its `validTimer` (exactly 6 integers per timer). So add new
   settings as new top-level fields, never change the shape of a timer or the meaning of an
-  existing field; if a change cannot avoid it, say so in that release's notes.
+  existing field; if a change cannot avoid it, say so in that release's notes. Example: the
+  repeats are the top-level `r` (one entry per timer), and a repeating timer is saved with
+  enabled 0, so an older release leaves it off (the owner's choice) instead of turning it
+  on once or for the whole length.
 - **Publishing is optional and one request at a time**: the controller sends only when set up
   (KVS `shabbat_pub`), assembles the body as a string per send, and the service replies 204
   with no body. Never let the relay depend on it.

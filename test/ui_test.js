@@ -139,7 +139,10 @@ const listening = (proc) =>
   await page.screenshot({ path: path.join(out, "1-status.png") });
 
   await page.click("role=tab[name='טיימרים']");
-  await page.waitForSelector("text=אחרי הדלקת נרות");
+  await page.waitForSelector("text=אחרי הדלקת נרות").catch((e) => {
+    console.log("page errors:", errors);
+    throw e;
+  });
   await page.screenshot({ path: path.join(out, "2-timers.png") });
 
   // edit the clock timer: last day only, 12:30, +10 min
@@ -160,6 +163,14 @@ const listening = (proc) =>
   const pv = await page.textContent("main");
   check(/12:30–/.test(pv), "preview reflects edited time 12:30");
   check(!/09:00–/.test(pv), "Yom Tov-only 09:00 timer absent on plain Shabbatot");
+
+  // make the candle-lighting timer repeat: 30 min every 35 min, for 4 hours
+  await page.click("button.tname:has-text('אחרי הדלקת נרות')");
+  await page.click(".t.edit .pill:has-text('חוזר')");
+  await page.waitForSelector("text=30 דק׳ כל 35 דק׳");
+  const rsum = await page.textContent(".t.edit .tname");
+  check(/כל 35 דק׳ למשך 4 שע׳/.test(rsum), "repeat in the timer's summary: " + rsum);
+  await page.screenshot({ path: path.join(out, "4b-repeat.png"), fullPage: true });
   await page.screenshot({ path: path.join(out, "4-preview.png"), fullPage: true });
 
   // save
@@ -174,6 +185,10 @@ const listening = (proc) =>
     "saved to device: " + JSON.stringify(g.cfg.timers)
   );
   check(g.cfg.timers[3][3] === 2, "new timer is Yom Tov only");
+  check(
+    g.cfg.timers[0][5] === 0 && JSON.stringify(g.cfg.reps) === "[[35,240,1],0,0,0]",
+    "repeat saved, the timer itself disabled: " + JSON.stringify(g.cfg.reps)
+  );
   await page.screenshot({ path: path.join(out, "5-saved.png") });
 
   // status: skip + test time
@@ -255,7 +270,9 @@ const listening = (proc) =>
     /מעלית הרצל 5/.test(pubTxt) && /ו׳ 06\/11 16:26 ← ש׳ 07\/11 17:23/.test(pubTxt),
     "public page shows the next Shabbat: " + pubTxt.slice(0, 160)
   );
-  check(/12:30–13:30/.test(pubTxt) && /16:41–17:11/.test(pubTxt), "public page ON times");
+  // the candle-lighting timer repeats (v 2): one line, 16:41 to the end of its last pulse
+  check(/12:30–13:30/.test(pubTxt) && /16:41–20:41/.test(pubTxt), "public page ON times");
+  check(/30 דק׳ כל 35 דק׳/.test(pubTxt), "public page shows the repeat: " + pubTxt.slice(0, 400));
   await pubPage.screenshot({ path: path.join(out, "10-public.png"), fullPage: true });
   await pubPage.click("text=English");
   await pubPage.waitForSelector("text=Fri 06/11 16:26 → Sat 07/11 17:23");
