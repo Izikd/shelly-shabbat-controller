@@ -224,7 +224,9 @@ if (typeof document !== "undefined")
         pvHint: "כך הממסר יפעל בחלונות הקרובים, לפי ההגדרות הנוכחיות (גם לפני שמירה).",
         pvSkipped: "מדולג – הממסר לא יופעל בחלון זה",
         pvNone: "אין הפעלות בחלון זה",
-        tabs: ["מצב", "טיימרים", "תחזית", "לוח זמנים"],
+        tabs: ["מצב", "טיימרים", "לוח זמנים", "הגדרות"],
+        pvTitle: "ההפעלות הקרובות",
+        showAll: "הצג את כל השנים ({0} חלונות נוספים)",
         relayOn: "ממסר: פועל",
         relayOff: "ממסר: כבוי",
         testTag: " · בדיקה",
@@ -422,7 +424,9 @@ if (typeof document !== "undefined")
           "How the relay will run in the next windows with these settings (even before saving).",
         pvSkipped: "Skipped – the relay will not turn on in this window",
         pvNone: "No relay time in this window",
-        tabs: ["Status", "Timers", "Forecast", "Schedule"],
+        tabs: ["Status", "Timers", "Schedule", "Settings"],
+        pvTitle: "Coming relay times",
+        showAll: "Show all years ({0} more windows)",
         relayOn: "Relay: on",
         relayOff: "Relay: off",
         testTag: " · test",
@@ -580,6 +584,7 @@ if (typeof document !== "undefined")
         S.timers = j.cfg.timers.map(toObj);
         S.saved = JSON.stringify(j.cfg.timers);
       }
+      if (S.tab === "timers" && !S.prev) preview(); // opened on Timers (#timers)
       if (!quiet) render();
     }
     // the status reply without the device's clock (st.now changes on every reply)
@@ -598,6 +603,7 @@ if (typeof document !== "undefined")
     }
     var pvTimer = null;
     function preview() {
+      if (!S.cfg) return; // the timers are not known yet: load() asks once they are
       clearTimeout(pvTimer);
       pvTimer = setTimeout(function () {
         rpc("ShabbatPreview", { timers: draft(), n: 6 }, function (j) {
@@ -897,42 +903,47 @@ if (typeof document !== "undefined")
             })
           )
         ),
+        // a test time on is shown here too: the relay follows it
+        st.test ? h("div", { cls: "warn" }, tr(L.testActive, full(st.test))) : null,
+        viewLog()
+      ];
+    }
+    function viewTest(st) {
+      return h(
+        "div",
+        { cls: "card col" },
+        h("label", { for: "tt" }, h("b", null, L.testTime)),
+        h("span", { cls: "s" }, L.testHint),
         h(
           "div",
-          { cls: "card col" },
-          h("label", { for: "tt" }, h("b", null, L.testTime)),
-          h("span", { cls: "s" }, L.testHint),
+          { cls: "line" },
+          h("input", {
+            id: "tt",
+            type: "datetime-local",
+            value: st.test ? toLocalInput(st.test) : "",
+            onchange: function (e) {
+              if (e.target.value) rpc("ShabbatSet", { test: fromLocalInput(e.target.value) }, load);
+            }
+          }),
           h(
-            "div",
-            { cls: "line" },
-            h("input", {
-              id: "tt",
-              type: "datetime-local",
-              value: st.test ? toLocalInput(st.test) : "",
-              onchange: function (e) {
-                if (e.target.value)
-                  rpc("ShabbatSet", { test: fromLocalInput(e.target.value) }, load);
+            "button",
+            {
+              cls: "btn",
+              onclick: function () {
+                rpc("ShabbatSet", { test: 0 }, load);
               }
-            }),
-            h(
-              "button",
-              {
-                cls: "btn",
-                onclick: function () {
-                  rpc("ShabbatSet", { test: 0 }, load);
-                }
-              },
-              L.clear
-            )
-          ),
-          st.test ? h("div", { cls: "warn" }, tr(L.testActive, full(st.test))) : null
+            },
+            L.clear
+          )
         ),
-        st.loc ? viewLoc() : null,
-        viewPub(),
-        viewLog(),
-        viewUpdate(),
-        viewDiag()
-      ];
+        st.test ? h("div", { cls: "warn" }, tr(L.testActive, full(st.test))) : null
+      );
+    }
+    // set up once: place, test time, public page, updates, technical info
+    function viewSettings() {
+      var st = S.st;
+      if (!st) return h("div", { cls: "card" }, L.loading);
+      return [viewLoc(), viewTest(st), viewPub(), viewUpdate(), viewDiag()];
     }
 
     // ---------- public schedule page (service/; the device sends, the browser sets it up) ----------
@@ -1480,7 +1491,10 @@ if (typeof document !== "undefined")
               },
               L.addTimer
             )
-          : h("span", { cls: "s" }, L.maxTimers)
+          : h("span", { cls: "s" }, L.maxTimers),
+        // what the timers do in the coming windows, as edited (before saving too)
+        h("h2", { cls: "yr" }, L.pvTitle),
+        viewPreview()
       ];
     }
 
@@ -2180,6 +2194,14 @@ if (typeof document !== "undefined")
       var rows = S.tbl.filter(function (w) {
         return (S.tblPast || w.e > now) && (!S.tblHol || w.k !== 1);
       });
+      // the coming year, unless asked for all (5 years are hundreds of rows)
+      var more = 0;
+      if (!S.tblAll)
+        rows = rows.filter(function (w) {
+          if (w.s < now + 366 * 86400) return true;
+          more++;
+          return false;
+        });
       var first = S.tbl[0],
         last = S.tbl[S.tbl.length - 1];
       var out = [
@@ -2262,6 +2284,20 @@ if (typeof document !== "undefined")
         );
       });
       if (!rows.length) out.push(h("span", { cls: "s" }, L.noRows));
+      if (more)
+        out.push(
+          h(
+            "button",
+            {
+              cls: "btn",
+              onclick: function () {
+                S.tblAll = true;
+                render();
+              }
+            },
+            tr(L.showAll, more)
+          )
+        );
       return out;
     }
 
@@ -2306,6 +2342,24 @@ if (typeof document !== "undefined")
       ];
     }
 
+    // ---------- tabs ----------
+    // The tab is kept in the address (#settings), so a reload - also the one after an update -
+    // comes back to it. Each tab asks the device only for what it shows: the forecast when
+    // Timers opens, the beta choice and the public page when Settings first opens.
+    var TABS = ["status", "timers", "table", "settings"];
+    function openTab(t) {
+      S.tab = t;
+      try {
+        history.replaceState(null, "", t === "status" ? location.pathname : "#" + t);
+      } catch (e) {}
+      if (t === "timers") preview();
+      if (t === "settings" && !S.setUp) {
+        S.setUp = true;
+        loadBeta();
+        loadPub();
+      }
+    }
+
     // ---------- render ----------
     var root = document.getElementById("app");
     function render() {
@@ -2313,8 +2367,8 @@ if (typeof document !== "undefined")
       var tabs = [
         ["status", L.tabs[0]],
         ["timers", L.tabs[1]],
-        ["preview", L.tabs[2]],
-        ["table", L.tabs[3]]
+        ["table", L.tabs[2]],
+        ["settings", L.tabs[3]]
       ];
       var relay = !st ? "…" : (st.relay ? L.relayOn : L.relayOff) + (st.test ? L.testTag : "");
       var body =
@@ -2322,9 +2376,9 @@ if (typeof document !== "undefined")
           ? viewStatus()
           : S.tab === "timers"
             ? viewTimers()
-            : S.tab === "preview"
-              ? viewPreview()
-              : viewTable();
+            : S.tab === "table"
+              ? viewTable()
+              : viewSettings();
       var d = dirty();
       var app = h(
         "div",
@@ -2370,9 +2424,9 @@ if (typeof document !== "undefined")
                   "aria-selected": S.tab === t[0] ? "true" : "false",
                   cls: S.tab === t[0] ? "sel" : "",
                   onclick: function () {
-                    S.tab = t[0];
-                    if (t[0] === "preview") preview();
+                    openTab(t[0]);
                     render();
+                    window.scrollTo(0, 0); // a tab starts at its top
                   }
                 },
                 t[1]
@@ -2531,15 +2585,14 @@ if (typeof document !== "undefined")
       button:focus-visible, input:focus-visible { outline: 2px solid #1D4ED8; outline-offset: 2px }
     `;
     document.head.appendChild(h("style", null, css));
+    openTab(TABS.indexOf(location.hash.slice(1)) > 0 ? location.hash.slice(1) : "status");
     render();
-    refresh(); // the Forecast tab asks for its preview when it is opened
-    loadBeta();
-    loadPub();
+    refresh();
     // Every open page shares the device's few connections (docs/device/network.md): a page in
     // a hidden tab or a minimised window does not ask, and catches up when it is shown again.
     function poll() {
       refresh();
-      if (S.tab === "status" && S.pub && S.pub.on) loadPub();
+      if (S.tab === "settings" && S.pub && S.pub.on) loadPub();
     }
     setInterval(function () {
       if (!document.hidden) poll();

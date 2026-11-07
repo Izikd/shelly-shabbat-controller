@@ -45,10 +45,10 @@ Download `shabbat_controller.js` and `shabbat_ui.js` from the latest
    (Or let `tools/deploy.py` below do steps 1-2.)
 3. Switch settings -> power-on default: **Off** (fail-safe if the controller is ever stopped).
 4. Open `http://<shelly-ip>/script/<controller id>/ui` (the console prints the exact URL) and
-   **set the location** (Status tab): search a city (hebcal's list of ~950 cities, English names)
-   or enter latitude, longitude and time zone. Until a location is set the relay is not
-   switched. The page loads hebcal from a CDN (jsDelivr, or unpkg if that fails) only when you
-   press the button, computes 5 years of windows with hebcal's defaults for the place
+   **set the location** (on the Status tab until one is set, then under Settings): search a
+   city (hebcal's list of ~950 cities, English names) or enter latitude, longitude and time
+   zone. Until a location is set the relay is not switched. The page loads hebcal from a CDN
+   (jsDelivr, or unpkg if that fails) only when you press the button, computes 5 years of windows with hebcal's defaults for the place
    (candle lighting 18 minutes before sunset - 40 in Jerusalem, 30 in Haifa; havdalah at 8.5
    degrees; two-day Yom Tov abroad) and writes them as the code of a script named
    `shabbat_dates`, which is never started. Set the location again within 5 years (the page
@@ -68,7 +68,7 @@ Beta testers can use `.../library-beta/manifest.json` instead: that branch holds
 pre-release (`v0.2.0-beta.1` and the like), which never reaches the stable `library` branch.
 
 ### Upgrading from the settings page
-Status tab -> **Software update** -> **Check for updates**. Only then does the browser ask
+Settings tab -> **Software update** -> **Check for updates**. Only then does the browser ask
 GitHub (the `library` branch above, on `raw.githubusercontent.com`) for the latest release;
 the page never contacts anything but the device on its own, and the device needs no
 internet. **Beta versions** (a switch in the same card, kept on the device, so every
@@ -123,16 +123,23 @@ gets English; the button in the header switches language and the browser remembe
 (it is not stored on the device). All page text is in the `I18N` table at the top of
 `src/ui.js` - add a language by adding an entry there.
 
-The page is stored compressed on the device (~28 KB instead of ~52 KB, so it loads with
+The page is stored compressed on the device (~27 KB instead of ~53 KB, so it loads with
 fewer reads): browsers unpack it with their built-in `DecompressionStream`, and older ones
 with a small decoder in `src/unpack.js`. It works in Chrome / Edge 86+, Safari 14+ (iOS 14+)
 and Firefox 78+.
-- **Status**: Shabbat / Yom Tov now, next window, next relay ON, automation on/off,
-  skip next window (one-off), test time (simulated clock, RAM only), location. Times are
-  shown in the location's time zone.
+The page has four tabs; the one open is kept in the address (`#timers`, `#table`, `#settings`),
+so a reload comes back to it.
+- **Status** (day to day): Shabbat / Yom Tov now, next window, next relay ON, automation
+  on/off, skip next window (one-off), relay log. Times are shown in the location's time zone.
 - **Timers** (up to 12): start point candle lighting (+min) / fixed time / havdalah (-min),
   duration, applies to Shabbat & Yom Tov / Shabbat only / Yom Tov only, and for fixed-time
-  timers every day / first day / last day of the window. All clipped to the window.
+  timers every day / first day / last day of the window. All clipped to the window. Below
+  them, the **coming relay times**: the next 6 windows with merged ON times, computed by the
+  device for the unsaved draft. Changes are applied only with "Save to device".
+- **Schedule**: the windows of the coming year, by year ("Show all years" for the whole
+  table), holidays-only filter, past windows.
+- **Settings** (set up once): location, test time (simulated clock, RAM only), public
+  schedule page, software update and beta versions, technical info.
 - **Safety**: every switch-on also arms the firmware's own auto-off (`toggle_after`), so the
   relay drops at the end of the interval even if the script stops. Manual switching (app,
   button, web) is respected until the next timer event ("return to automatic" button).
@@ -141,10 +148,7 @@ and Firefox 78+.
   sync, device memory and storage, script memory and errors (read by the browser from firmware
   RPCs, so it costs the controller no memory).
 - **Hebrew dates** on windows (browser's built-in Hebrew calendar).
-- **Schedule**: every window in the table, by year, holidays-only filter, past windows.
-- **Forecast**: next 6 windows with merged ON times, computed by the device for the
-  unsaved draft. Changes are applied only with "Save to device".
-- **Public schedule page** (optional, Status tab): "Create page" gives a permanent link (and a
+- **Public schedule page** (optional, Settings tab): "Create page" gives a permanent link (and a
   QR code) to a read-only page with the on times of the next 6 windows, in Hebrew and English,
   for neighbours, a building lobby or a WhatsApp group. No account is needed. The device sends
   the times to the schedule service once a day, ~30 s after every change and after a restart;

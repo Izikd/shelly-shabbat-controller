@@ -82,9 +82,11 @@ const listening = (proc) =>
     );
 
   const listCalls = [],
-    previewCalls = [];
+    previewCalls = [],
+    setCalls = [];
   page.on("request", (r) => r.url().includes("Script.List") && listCalls.push(r.url()));
   page.on("request", (r) => r.url().includes("ShabbatPreview") && previewCalls.push(r.url()));
+  page.on("request", (r) => /KVS\.|ShabbatPub/.test(r.url()) && setCalls.push(r.url()));
   await page.goto(`http://localhost:${PORT}/script/1/ui`);
   await page.waitForSelector("text=הפעלה הבאה של הממסר");
   await page.waitForTimeout(500);
@@ -92,6 +94,7 @@ const listening = (proc) =>
     previewCalls.length === 0,
     "no preview request on load (Status tab): " + previewCalls.length
   );
+  check(setCalls.length === 0, "no Settings requests on load (beta, publishing): " + setCalls);
   check(
     listCalls.length === 0,
     "loader used the page script id from the controller (no Script.List)"
@@ -132,10 +135,7 @@ const listening = (proc) =>
     "status shows next Shabbat Fri 06/11 16:26: " + statusTxt.slice(0, 200)
   );
   check(/ו׳ 06\/11 16:41/.test(statusTxt), "next ON Fri 16:41");
-  check(
-    /Petah Tiqwa/.test(statusTxt) && /Asia\/Jerusalem · זמנים עד/.test(statusTxt),
-    "location shown: " + statusTxt.slice(0, 120)
-  );
+  check(!/Petah Tiqwa/.test(statusTxt), "a set location is on Settings, not Status");
   await page.screenshot({ path: path.join(out, "1-status.png") });
 
   await page.click("role=tab[name='טיימרים']");
@@ -154,7 +154,7 @@ const listening = (proc) =>
   await page.click("text=+ הוסף טיימר");
   await page.click(".t.edit .pill:has-text('יו״ט בלבד')");
 
-  await page.click("role=tab[name='תחזית']");
+  // the forecast below the timers follows the edits
   await page.waitForSelector(".slot");
   await page.waitForTimeout(600);
   const pv = await page.textContent("main");
@@ -185,6 +185,15 @@ const listening = (proc) =>
   await page.screenshot({ path: path.join(out, "6-status-skip.png") });
   await page.click("button[aria-label='דלג על החלון הקרוב']");
   await page.waitForSelector("text=(מדולג)", { state: "detached" });
+  await page.click("role=tab[name='הגדרות']");
+  check(page.url().endsWith("#settings"), "the tab is kept in the address: " + page.url());
+  const setTxt = await page.textContent("main");
+  check(
+    /Petah Tiqwa/.test(setTxt) && /Asia\/Jerusalem · זמנים עד/.test(setTxt),
+    "location shown on Settings: " + setTxt.slice(0, 120)
+  );
+  await page.waitForTimeout(300);
+  check(setCalls.length > 0, "Settings asks for the beta choice and publishing when opened");
   await page.fill("#tt", "2026-11-07T12:45");
   await page.dispatchEvent("#tt", "change");
   await page.waitForSelector("text=מצב בדיקה פעיל");
@@ -195,8 +204,12 @@ const listening = (proc) =>
     "test time Sat 07/11 12:45 Israel -> relay ON (test=" + st.st.test + ")"
   );
   await page.screenshot({ path: path.join(out, "7-status-test.png") });
+  await page.click("role=tab[name='מצב']");
+  check(await page.isVisible("text=מצב בדיקה פעיל"), "test time also shown on Status");
+  await page.click("role=tab[name='הגדרות']");
   await page.click("text=נקה");
   await page.waitForSelector("text=ממסר: כבוי");
+  await page.click("role=tab[name='מצב']");
 
   // manual switch -> banner -> resume; log; diagnostics; Hebrew dates
   await page.evaluate(() => fetch("/rpc/Switch.Set?id=0&on=true"));
@@ -215,6 +228,7 @@ const listening = (proc) =>
     "log shows manual + automatic events"
   );
   check(/ט״ז בחשוון/.test(logTxt) || /בחשוון/.test(logTxt), "Hebrew date on next window");
+  await page.click("role=tab[name='הגדרות']");
   await page.click("text=מידע טכני");
   await page.waitForSelector("text=2.0.3");
   await page.screenshot({ path: path.join(out, "7c-log-diag.png"), fullPage: true });
@@ -263,6 +277,13 @@ const listening = (proc) =>
   // full schedule tab
   await page.click("role=tab[name='לוח זמנים']");
   await page.waitForSelector(".tr");
+  const nYear = await page.locator(".tr").count();
+  check(nYear > 50 && nYear < 70, "the coming year listed: " + nYear);
+  check(
+    (await page.evaluate(() => window.scrollY)) === 0,
+    "a tab opens at its top: " + (await page.evaluate(() => window.scrollY))
+  );
+  await page.click("text=הצג את כל השנים");
   const nAll = await page.locator(".tr").count();
   check(nAll === 232, "upcoming windows listed: " + nAll);
   const firstRow = await page.textContent(".tr >> nth=0");
@@ -311,11 +332,10 @@ const listening = (proc) =>
   await en.screenshot({ path: path.join(out, "en-1-status.png") });
   await en.click("role=tab[name='Timers']");
   await en.waitForSelector("text=After candle lighting");
-  await en.click("role=tab[name='Forecast']");
   await en.waitForSelector(".slot");
   await en.click("role=tab[name='Schedule']");
   await en.waitForSelector(".tr");
-  await en.click("role=tab[name='Status']");
+  await en.click("role=tab[name='Settings']");
   await en.click("text=Technical info");
   await en.waitForSelector("text=Firmware");
   const diagTxt = (await en.textContent("main")).replace(/[\u2066\u2069]/g, ""); // bidi isolates
@@ -342,12 +362,12 @@ const listening = (proc) =>
   );
   await en.screenshot({ path: path.join(out, "en-2-status-diag.png"), fullPage: true });
   await en.click("button.lang");
-  await en.waitForSelector("text=הפעלה הבאה של הממסר");
+  await en.waitForSelector("text=בדוק עדכונים");
   await en.reload();
-  await en.waitForSelector("text=הפעלה הבאה של הממסר");
+  await en.waitForSelector("text=בדוק עדכונים"); // still on Settings (#settings)
   check((await en.getAttribute("html", "dir")) === "rtl", "switch to Hebrew is remembered");
   await en.click("button.lang");
-  await en.waitForSelector("text=Next relay ON");
+  await en.waitForSelector("text=Check for updates");
 
   // the 15 s status poll: not from a hidden page (it catches up when shown), and a reply
   // that matches the last one (apart from the clock) leaves the page as it is
@@ -449,6 +469,7 @@ const listening = (proc) =>
   // a development build (the first mock): offered, but called a development build
   await up.goto(`http://localhost:${PORT}/script/1/ui`);
   await up.waitForSelector("text=Next relay ON");
+  await up.click("role=tab[name='Settings']");
   check(ghRequests === 0, "no request to GitHub before the button is pressed: " + ghRequests);
   await up.click("text=Check for updates");
   await up.waitForSelector("text=Development build");
@@ -471,8 +492,8 @@ const listening = (proc) =>
     );
   const ctrlFirst = async () =>
     (await api2("Script.GetCode", { id: 1, offset: 0, len: 120 })).data.split("\n")[0];
-  await up.goto(`http://localhost:${PORT2}/script/1/ui`);
-  await up.waitForSelector("text=Next relay ON");
+  await up.goto(`http://localhost:${PORT2}/script/1/ui#settings`);
+  await up.waitForSelector("text=Check for updates");
   const before = await api2("Script.ShabbatSet", { id: 1, timers: [[1, 600, 45, 0, 0, 1]] });
 
   // the CDN can briefly hold files of two versions: refuse
@@ -511,8 +532,8 @@ const listening = (proc) =>
   await up.click("text=Install v0.2.0");
   check(/restarts for a few seconds/.test(confirmText), "confirmation asked: " + confirmText);
   await up.waitForSelector("text=Update installed", { timeout: 30000 });
-  await up.waitForEvent("load", { timeout: 15000 }); // the page reloads itself
-  await up.waitForSelector("text=Next relay ON", { timeout: 15000 });
+  await up.waitForEvent("load", { timeout: 15000 }); // the page reloads itself, on Settings
+  await up.waitForSelector("text=Check for updates", { timeout: 15000 });
   check(/version v0\.2\.0 /.test(await ctrlFirst()), "controller is v0.2.0");
   check(
     (await api2("Script.GetCode", { id: 2, offset: 0, len: 120 })).data.indexOf(
@@ -597,7 +618,7 @@ const listening = (proc) =>
   );
   await up.waitForSelector("text=Update installed", { timeout: 30000 });
   await up.waitForEvent("load", { timeout: 15000 });
-  await up.waitForSelector("text=Next relay ON");
+  await up.waitForSelector("text=Check for updates");
   check(/version v0\.2\.0 /.test(await ctrlFirst()), "back on stable v0.2.0");
   srv2.kill();
 
@@ -704,6 +725,8 @@ const listening = (proc) =>
   await lp.screenshot({ path: path.join(out, "loc-3-saved.png"), fullPage: true });
   // abroad, by coordinates: New York
   await lp.waitForSelector("text=Location saved", { state: "detached" });
+  check(!(await lp.isVisible("text=Change location")), "a set location is not on Status");
+  await lp.click("role=tab[name='Settings']");
   await lp.click("text=Change location");
   await lp.waitForSelector("#lq");
   check((await lp.inputValue("#lla")) === "31.76904", "editor starts from the saved place");
@@ -718,8 +741,12 @@ const listening = (proc) =>
   await lp.waitForSelector("text=Location saved");
   g3 = await api3("Script.ShabbatGet", { id: 1 });
   check(g3.st.loc === "40.71, -74.01" && g3.st.tz === "America/New_York", "coordinates saved");
+  check(
+    /America\/New_York · times until/.test(await lp.textContent("main")),
+    "New York shown on Settings"
+  );
+  await lp.click("role=tab[name='Status']");
   const stTxt = await lp.textContent("main");
-  check(/America\/New_York · times until/.test(stTxt), "New York shown: " + stTxt.slice(0, 120));
   // shown in New York time: Fri 06/11/2026 candle lighting is in the afternoon there
   check(/Fri 06\/11 16:\d\d/.test(stTxt), "next window in New York time: " + stTxt.slice(0, 200));
   await lp.click("role=tab[name='Schedule']");

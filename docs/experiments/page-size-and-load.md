@@ -136,6 +136,17 @@ per round trip). Entries are dated, newest last; keep the method so a test can b
   `mem_used` 17,136, `mem_peak` 23,184 (the forecast's peak, as in
   `table-generation.md`), no errors; `ram_min_free` 61,184.
 
+## 2026-11-07 - Tabs regrouped: Status / Timers / Schedule / Settings
+- **Change**: Status keeps the day-to-day items; the forecast moved under the timers (it
+  follows unsaved edits); Schedule lists the coming year with "Show all years"; location,
+  test time, public page, updates and technical info moved to a Settings tab. The open tab
+  is kept in the address (`#settings`), so the reload after an update comes back to it.
+- **Measured** (local builds only): page 27,068 -> 27,421 bytes (+353 for the new tab, its
+  texts and the year limit). Requests on load: only `ShabbatGet` besides the code reads;
+  the beta choice (`KVS.GetMany`) and `ShabbatPub` are asked when Settings first opens, and
+  the publishing status is polled only while Settings is open. Schedule tab: 56 rows for the
+  coming year instead of 232.
+
 ## Ideas not tried yet
 - Inline the first status into the HTML (saves one round trip; costs controller work per
   request).
