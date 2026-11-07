@@ -16,7 +16,7 @@ on or talks to the device.
 ## experiments/ - what was measured and decided
 Dated entries: question, method, numbers, decision. Read before re-trying something or
 undoing a decision.
-- [table-generation.md](experiments/table-generation.md) - hdate vs the ESPHome table, astral, pinning
+- [table-generation.md](experiments/table-generation.md) - hdate vs the ESPHome table, hdate vs hebcal, the move to hebcal in the browser
 - [uploads-and-reads.md](experiments/uploads-and-reads.md) - uploading code, the large-read reboot, dropped requests, read size vs memory
 - [minification.md](experiments/minification.md) - minifying the controller vs its memory use
 - [page-size-and-load.md](experiments/page-size-and-load.md) - page size options, load times, the request chain, ideas not tried

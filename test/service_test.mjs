@@ -2,6 +2,7 @@
 // Tests of the schedule service (service/src) on Node, with an in-memory D1 (test/fake_d1.mjs).
 // Usage: node test/service_test.mjs
 import { route, cleanup, validSchedule, LIMITS } from "../service/src/index.js";
+import { renderPage } from "../service/src/page.js";
 import { fakeD1 } from "./fake_d1.mjs";
 
 let fails = 0;
@@ -102,6 +103,20 @@ for (const b of bad)
   check(typeof validSchedule(b) === "string", "rejects " + JSON.stringify(b).slice(0, 70));
 const extra = validSchedule({ ...sched, junk: "x".repeat(100), w: [{ ...sched.w[0], junk: 1 }] });
 check(!JSON.stringify(extra).includes("junk"), "extra fields dropped");
+// the device's time zone (devices from before locations send none: Israel)
+check(validSchedule({ ...sched, tz: "America/New_York" }).tz === "America/New_York", "tz kept");
+check(validSchedule(sched).tz === undefined, "no tz: none stored");
+for (const tz of ["Mars/Base", "a b", 5, "x".repeat(70), '"><script>'])
+  check(typeof validSchedule({ ...sched, tz }) === "string", "rejects tz " + tz);
+const nyHtml = renderPage({
+  lang: "en",
+  now: sched.now,
+  name: "NY",
+  updated: sched.now,
+  data: validSchedule({ ...sched, tz: "America/New_York" }),
+  link: "https://shabbat.example/s/abcdefghij"
+});
+check(/Fri 06\/11 09:30 → Sat 07\/11 10:25/.test(nyHtml), "page in the device's time zone");
 now += 30;
 r = await call("PUT", "/api/s/" + id, { body: "x".repeat(LIMITS.body + 1), key });
 check(r.status === 400, "too large: " + r.status);

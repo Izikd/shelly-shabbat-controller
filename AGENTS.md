@@ -9,11 +9,15 @@ is `docs/README.md`. Keeping these notes current is part of every change: see
 "Done means" below.
 
 ## Layout
-- `src/main.js` controller (runs on the Shelly), `src/table.js` its generated window table
-- `src/ui.js` settings page (runs in the browser), `src/unpack.js` unpacks it in the browser
+- `src/main.js` controller (runs on the Shelly); its windows come from the never-started
+  script `shabbat_dates`, which the settings page writes
+- `src/ui.js` settings page (runs in the browser), `src/unpack.js` unpacks it in the browser,
+  `src/tablegen.js` computes the windows with hebcal and reads / writes the `shabbat_dates`
+  format (built into the page; the tests load it in Node)
 - `tools/build.mjs` src -> `dist/` (not committed), `tools/deploy.py` uploads to a device,
-  `tools/gen_table.py` regenerates the table with hdate, `tools/check_docs.mjs` checks the
-  docs index, links and paths, `tools/release_notes.sh` writes a release's notes
+  `tools/gen_ref.mjs` regenerates the tests' reference tables (`test/dates/*.txt`,
+  `test/windows.json`) with the pinned hebcal devDependencies, `tools/check_docs.mjs` checks
+  the docs index, links and paths, `tools/release_notes.sh` writes a release's notes
 - `test/` simulator (`sim.js`), fallback decoder (`inflate_test.js`), Playwright test of the
   page against a mock device (`ui_test.js` + `mockdevice.js`, which also uploads and restarts
   scripts for the update test, and runs the schedule service; `stamp.js` re-stamps a build
@@ -68,7 +72,7 @@ The owner works in stages and says when to move on; do not run ahead of the curr
 
 ### Checks, releases, commits
 - Before pushing: `npm run format` and `npm test` (builds, checks the docs' links and
-  index, then all four test suites). CI runs the same checks plus `npm run check:table`.
+  index, then all four test suites). CI runs the same checks plus `npm run check:ref`.
 - Releases are prototypes: `v0.x.y` (first `v0.1.0`), no `v1.0.0` until the owner says so.
   Never push a `v*` tag or run the Release workflow unless asked; the owner picks the
   version. Cloud sessions cannot push tags (403): release by running the workflow with the
@@ -77,8 +81,8 @@ The owner works in stages and says when to move on; do not run ahead of the curr
   tags: builds are stamped `version dev - commit <sha> - built <ISO time>`.
 - License: MIT (`LICENSE`). Every source file starts with an SPDX line,
   `// SPDX-License-Identifier: MIT` (`#` or `--` in other languages), after a shebang if there
-  is one; `tools/gen_table.py` writes it into `src/table.js`. The build strips comments, so it
-  never reaches `dist/`.
+  is one (not in the generated `test/dates/*.txt` and `test/windows.json`). The build strips
+  comments, so it never reaches `dist/`.
 - Commit messages: a short subject, then why, and what was measured or tested on hardware.
   The subjects become the release notes (`tools/release_notes.sh`: the commits since the
   previous release, for a stable one since the previous stable), and the page's "What's
@@ -108,7 +112,7 @@ npm run check:docs              # docs index complete, links and paths resolve
 npm run build                   # dist/ only
 uv run tools/deploy.py <host> --build   # build and install on a device
 uv run tools/deploy.py <host> --dry-run # what would change
-npm run check:table             # table still matches hdate (needs uv)
+npm run check:ref               # test/dates + test/windows.json still match hebcal
 npm run service:deploy          # deploy service/ (needs a Cloudflare API token)
 ```
 The browser test needs Chromium for Playwright (`npx playwright install chromium`). If a
@@ -134,7 +138,7 @@ Each has a reason in `docs/device/` and `docs/experiments/`.
   statement merging. Top-level names must survive; `test/sim.js` calls them.
 - **Script memory is tight** (~25 KB pool shared by running scripts; peak ~16-20 KB).
   Do not keep large strings around (assemble per request); check `mem_peak` after a deploy.
-- **Page budget: `dist/shabbat_ui.js` at most 24,576 bytes** (the loader asks for 6 x 4 KB
+- **Page budget: `dist/shabbat_ui.js` at most 28,672 bytes** (the loader asks for 7 x 4 KB
   first, 2 at a time; past that every load waits for them and then reads the rest). The build prints the size;
   a feature that would cross it needs the owner's decision
   (`docs/experiments/page-size-and-load.md`).
@@ -151,7 +155,13 @@ Each has a reason in `docs/device/` and `docs/experiments/`.
   (KVS `shabbat_pub`), assembles the body as a string per send, and the service replies 204
   with no body. Never let the relay depend on it.
 - **`shabbat_ui` never runs on the device**; it only stores the page code. deploy.py keeps it
-  stopped and disabled.
+  stopped and disabled. **`shabbat_dates` never runs either**: it stores the windows the page
+  computed (comment lines only, so starting it does nothing). Updates and deploy.py leave it
+  alone. Its format starts with `// shabbat_dates v1`; the controller reads it with 4 KB
+  `GetCode` pieces and keeps only the parsed parts. A change to the format needs a new
+  version line, and the controller must keep reading the old one.
+- **The relay never depends on the internet**: hebcal runs only in the browser, when the
+  location is set. Without `shabbat_dates` there are no windows and the relay stays off.
 - **Mocks must behave like the device** (`test/mockdevice.js`, `test/sim.js`): byte-range
   `GetCode` that garbles split UTF-8, refuses reads without a small `len`, errors past the end;
   `Script.List` available from the script. When the real device surprises you, teach the mock.
@@ -188,7 +198,7 @@ messages, CI logs and workflow artifacts, can be read by anyone and is hard to t
   never reaches stable users. Only `.github/workflows/release.yml` writes them, from a tested tag build;
   never push to `library` / `library-beta` or edit a release by hand, and never push a `v*` tag or run the
   Release workflow unless asked. Workflow inputs reach scripts only through `env`.
-- **No new runtime dependencies or network calls in the scripts**, apart from two the owner
+- **No new runtime dependencies or network calls in the scripts**, apart from three the owner
   chose:
   - the page's **Check for updates** button, which reads the `library` (and with beta on,
     `library-beta`) branch from `raw.githubusercontent.com` only when pressed (never on load
@@ -196,7 +206,12 @@ messages, CI logs and workflow artifacts, can be read by anyone and is hard to t
   - **publishing to the schedule service** (`service/`), off until the owner of a device sets
     it up on the page: then the controller sends the coming windows (one `HTTP.Request` at a
     time, see the rule above) and the page talks to the service to register, rename, stop and
-    show the page's name. Without it, nothing leaves the device.
+    show the page's name. Without it, nothing leaves the device;
+  - **hebcal for the location**: the page loads `@hebcal/core` and `@hebcal/cities` (exact
+    versions with integrity hashes, `HC_LIBS` in `src/ui.js`, the same versions as the
+    devDependencies; `ui_test.js` checks the hashes) from jsDelivr, or unpkg if that fails,
+    only when the user presses Set location / Change location (`ui_test.js` checks that no
+    CDN request is made before). hebcal is GPL: load it at runtime, never bundle or commit it.
   A new devDependency must be pinned in `package-lock.json`.
 
 ## Working with a real device

@@ -1,11 +1,13 @@
 # Shabbat Controller for Shelly
 
 A Shabbat clock (שעון שבת) that runs on the Shelly itself: it switches the relay on during
-timers you set inside Shabbat & Yom Tov windows (candle lighting to havdalah, Israel,
-2025-2030, from an embedded table). Use it for anything on a relay - a Shabbat elevator,
-lights, a hot plate, air conditioning. No internet or cloud needed once the clock is synced
-(optionally, it can publish its schedule to a public read-only page - see below).
-Settings are edited on a web page served by the Shelly.
+timers you set inside Shabbat & Yom Tov windows (candle lighting to havdalah), for any place,
+in Israel or abroad. Use it for anything on a relay - a Shabbat elevator, lights, a hot plate,
+air conditioning. Settings are edited on a web page served by the Shelly. When you set the
+location there, the page computes 5 years of times in your browser with
+[hebcal](https://github.com/hebcal/hebcal-es6) and stores them on the device; after that the
+device needs no internet or cloud, only a synced clock (optionally, it can publish its schedule
+to a public read-only page - see below).
 
 Developed and tested on a **Shelly Pro 1** (firmware 2.0.3), where it drives a Shabbat elevator.
 
@@ -17,7 +19,7 @@ Any Shelly that meets all of these should work; only the Pro 1 has been tested o
 | Gen2 or newer (Plus, Pro, Gen3, Gen4) with scripting | the controller is a Shelly script. Gen1 devices have no scripting |
 | **Firmware 2.0.0 or newer** | the settings page and API use `Script.addRpcHandler`, added in 2.0.0 |
 | A relay output (`Switch` component) as `switch:0` | the controller switches `switch:0` only. Two-channel devices must be in switch mode, not cover mode. Dimmers / RGBW (`Light` component) are not supported |
-| 2 free script slots, about 25 KB of free script memory | one running script (peak ~17-21 KB on the Pro 1) plus `shabbat_ui`, which is stored but never started. Script memory is shared, so other running scripts count too |
+| 3 free script slots, about 25 KB of free script memory | one running script (peak ~17-21 KB on the Pro 1) plus `shabbat_ui` and `shabbat_dates` (the times, created by the settings page), which are stored but never started. Script memory is shared, so other running scripts count too |
 | Clock sync (SNTP) after every power-up | the device needs the time to know where it is in the table; until it is synced the relay stays off |
 
 Devices that fit (from the Shelly API docs; untested unless marked):
@@ -42,7 +44,15 @@ Download `shabbat_controller.js` and `shabbat_ui.js` from the latest
    It only stores the page code (the browser reads it with `Script.GetCode`).
    (Or let `tools/deploy.py` below do steps 1-2.)
 3. Switch settings -> power-on default: **Off** (fail-safe if the controller is ever stopped).
-4. Open `http://<shelly-ip>/script/<controller id>/ui` (the console prints the exact URL).
+4. Open `http://<shelly-ip>/script/<controller id>/ui` (the console prints the exact URL) and
+   **set the location** (Status tab): search a city (hebcal's list of ~950 cities, English names)
+   or enter latitude, longitude and time zone. Until a location is set the relay is not
+   switched. The page loads hebcal from a CDN (jsDelivr, or unpkg if that fails) only when you
+   press the button, computes 5 years of windows with hebcal's defaults for the place
+   (candle lighting 18 minutes before sunset - 40 in Jerusalem, 30 in Haifa; havdalah at 8.5
+   degrees; two-day Yom Tov abroad) and writes them as the code of a script named
+   `shabbat_dates`, which is never started. Set the location again within 5 years (the page
+   warns a year ahead) to extend the times.
 
 ### Install from the Shelly script library
 In the device web UI: Scripts -> Library -> Configure URL, enter
@@ -75,6 +85,9 @@ and the log are kept). If anything fails after the stop, the previous controller
 back and started. A development build is offered the latest release too. Avoid installing
 during an active Shabbat / Yom Tov window on a device that drives something real (the page
 warns).
+Updates leave `shabbat_dates` (the location and its times) as it is. **Coming from a version
+before locations** (the times were built into the controller, Israel only): after the update
+there are no times until you set the location once.
 
 ### Upgrading from a computer
 `tools/deploy.py` uploads the scripts to the device over its RPC API (Python, no
@@ -110,12 +123,13 @@ gets English; the button in the header switches language and the browser remembe
 (it is not stored on the device). All page text is in the `I18N` table at the top of
 `src/ui.js` - add a language by adding an entry there.
 
-The page is stored compressed on the device (~18 KB instead of ~36 KB, so it loads with
+The page is stored compressed on the device (~28 KB instead of ~52 KB, so it loads with
 fewer reads): browsers unpack it with their built-in `DecompressionStream`, and older ones
 with a small decoder in `src/unpack.js`. It works in Chrome / Edge 86+, Safari 14+ (iOS 14+)
 and Firefox 78+.
 - **Status**: Shabbat / Yom Tov now, next window, next relay ON, automation on/off,
-  skip next window (one-off), test time (simulated clock, RAM only).
+  skip next window (one-off), test time (simulated clock, RAM only), location. Times are
+  shown in the location's time zone.
 - **Timers** (up to 12): start point candle lighting (+min) / fixed time / havdalah (-min),
   duration, applies to Shabbat & Yom Tov / Shabbat only / Yom Tov only, and for fixed-time
   timers every day / first day / last day of the window. All clipped to the window.
@@ -138,9 +152,12 @@ and Firefox 78+.
   the page. The relay never depends on it. Service: `service/` (see `service/README.md`).
 
 ## Device API (Script.<method>, params include `id` = controller script id)
-- `ShabbatGet` -> `{cfg:{timers, auto, skip}, st:{now, test, synced, auto, relay, on, cur, next, nextOn, end}}`
-- `ShabbatSet {timers?, auto?, skip?, test?, resume?}` -> same as Get (validated, saved to KVS)
-- Get/Set also return `log` ("<minutes since base><1|0><cause>,...") and `base`
+- `ShabbatGet` -> `{cfg:{timers, auto, skip}, st:{now, test, synced, auto, relay, on, cur, next, nextOn, end, loc, tz}}`
+  (`loc`: place name, `""` when no location is set; `tz`: its time zone; `end`: end of the times)
+- `ShabbatSet {timers?, auto?, skip?, test?, resume?, reload?}` -> same as Get (validated, saved
+  to KVS); `reload` reads `shabbat_dates` again and answers once it is read
+- Get/Set also return `log` ("<minutes since base><1|0><cause>,..."), `base` and `did` (the id
+  of `shabbat_dates`, -1 if none)
 - `ShabbatPreview {timers?, n?}` -> `{w:[{t, k, s, e, skip, on:[[s, e, "1+3"]]}], now}`
 - `ShabbatPub {u?, i?, k?, off?, send?}` -> `{on, u, i, k, ok, err, due, busy}`: publishing to
   the schedule service (service URL, page id, write key; saved in KVS `shabbat_pub`)
@@ -153,7 +170,7 @@ npm install            # prettier, terser, playwright
 npm run format         # format src/, test/, tools/ (npm run format:check to verify)
 npm run build          # src/ -> dist/
 npm test               # build, then the simulator and a browser test of the settings page
-npm run check:table    # regenerate the table with hdate and fail if it changed (needs uv)
+npm run check:ref      # regenerate the tests' reference tables with hebcal, fail if they changed
 npm run check:docs     # docs index complete, links and paths in the docs resolve (part of npm test)
 ```
 The browser test needs Chromium for Playwright: `npx playwright install chromium` once.
@@ -184,27 +201,28 @@ Every build stamps its first line with the release, the commit and the build tim
 UTC): `... - version v1.0.0 - commit e59860a - built 2026-11-06T08:20Z` for a release,
 `version dev - ...` for any other build (`-dirty` if tracked files had uncommitted changes).
 `SOURCE_DATE_EPOCH` sets the build time for a reproducible build. The settings page shows it
-under Technical info (`v1.0.0 · e59860a`, built `2026-11-06 10:20` Israel time; a release's
+under Technical info (`v1.0.0 · e59860a`, built `2026-11-06 10:20` in the location's time; a release's
 version, stable or beta, links to its GitHub release page), and
 `deploy.py` prints the version on the device and the one being installed. `deploy.py` ignores
 the build time when comparing, so rebuilding the same commit does not re-upload.
 
 ## Layout
-- `src/main.js` controller, `src/ui.js` settings page, `src/table.js` generated table,
-  `src/unpack.js` unpacks the compressed page in the browser (with a fallback decoder)
-- `tools/gen_table.py` table generator (hdate; adds DST periods). Writes `src/table.js` and
-  `test/windows.json` (the simulator's reference). To extend or move the table:
-  `uv run tools/gen_table.py --years 2025 ... 2035` (`--lat/--lon` for another city), then
-  `npm run build`. The Python tools declare their dependencies in a PEP 723 header, so uv
-  installs hdate on the fly; without uv, `pip install hdate==1.2.2` and run them with
-  `python3`. hdate is pinned: a new version may move times, so bump it on purpose
+- `src/main.js` controller, `src/ui.js` settings page, `src/unpack.js` unpacks the compressed
+  page in the browser (with a fallback decoder), `src/tablegen.js` computes the windows with
+  hebcal and writes / reads the `shabbat_dates` format (built into the page, also used by the
+  tests)
+- `tools/gen_ref.mjs` (`npm run check:ref`) the tests' reference tables: `test/dates/*.txt`
+  (`shabbat_dates` code for Petah Tikva, New York and Sydney, 2025-2030) and
+  `test/windows.json`, computed with the pinned hebcal devDependencies through
+  `src/tablegen.js`. The hebcal version the page loads is pinned in `src/ui.js` (`HC_LIBS`,
+  with integrity hashes); bump both together, the browser test checks they match
 - `tools/build.mjs` (`npm run build`) -> `dist/shabbat_controller.js` and `dist/shabbat_ui.js`
   (it empties `dist/` first). Minifies with terser: the page fully; the controller only by renaming
   local variables and dropping whitespace (no code restructuring, which could break the engine
   limits below). Top-level names are kept for `test/sim.js`
 - `tools/deploy.py` uploads a build or a release to a device (see "Upgrading from a computer")
-- `.github/workflows/` CI (format, build, tests, table check), releases, and deleting
-  branches once a push to `main` has merged them
+- `.github/workflows/` CI (format, build, tests, reference tables check), releases, and
+  deleting branches once a push to `main` has merged them
 - `test/inflate_test.js` the fallback decoder against Node's zlib
 - `test/sim.js` device simulator (minute-by-minute relay sweep vs an independent reference)
 - `test/mockdevice.js` + `test/ui_test.js` fake Shelly + Playwright browser test of the page,
@@ -221,7 +239,8 @@ the build time when comparing, so rebuilding the same commit does not re-upload.
   measurements with the decisions they led to (`docs/experiments/`); index in `docs/README.md`
 
 ## License
-MIT, see `LICENSE`. The scripts that run on the device and in the browser use no third-party
-code. The schedule service bundles `qrcode-generator` (MIT). `tools/gen_table.py` uses `hdate`
-(GPL-3.0-or-later) only on the developer's machine to compute the times in `src/table.js`;
-hdate itself is not part of this repository or of any build.
+MIT, see `LICENSE`. The scripts that run on the device use no third-party code. The settings
+page loads `@hebcal/core` and `@hebcal/cities` (hebcal, GPL-2.0-or-later and BSD-2-Clause) from
+a public CDN into the browser when the user sets a location; hebcal is not part of this
+repository or of any build (the tests use it as a devDependency). The schedule service bundles
+`qrcode-generator` (MIT).

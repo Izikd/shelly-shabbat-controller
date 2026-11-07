@@ -2,7 +2,7 @@
   {
     "fname": "shabbat_controller.js",
     "title": "shabbat_controller",
-    "description": "Shabbat clock: switches the relay (switch:0) on during your timers inside Shabbat & Yom Tov windows (Israel, 2025-2030, no internet needed). Install, enable Run on startup and Start. Also install shabbat_ui (settings page), then open http://<shelly-ip>/script/<id>/ui.",
+    "description": "Shabbat clock: switches the relay (switch:0) on during your timers inside Shabbat & Yom Tov windows, for any place (Israel or abroad). Install, enable Run on startup and Start. Also install shabbat_ui (settings page), then open http://<shelly-ip>/script/<id>/ui and set your location: until then the relay is not switched.",
     "tags": [
       "shabbat",
       "switch",

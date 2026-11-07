@@ -31,3 +31,9 @@ the device) or *design* (a rule we chose). Recheck on new firmware or other mode
   `POST` body, resume from the reported length after a lost reply, read back with 4 KB
   `GetCode` pieces and compare, controller stopped only for its own upload, old code put back
   if anything fails after the stop.
+- **`shabbat_dates`, the stored windows** (*design*, 2026-11-07, not yet tried on hardware):
+  the settings page creates it with `Script.Create {name}` (a new script is stopped and not
+  enabled, *doc*), writes it with the same `PutCode` steps as an update, then calls
+  `Script.ShabbatSet {reload: true}`. The controller finds it with `Script.List` and reads it
+  with `Script.GetCode` (4 KB pieces) through `Shelly.call` - the first read of script code
+  from inside the script; to confirm on the device, with its memory peak.

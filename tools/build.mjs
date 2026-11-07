@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // SPDX-License-Identifier: MIT
 // Build the installable scripts from the readable sources:
-//   dist/shabbat_controller.js       controller (src/main.js + src/table.js), minified
-//   dist/shabbat_ui.js               settings page (src/ui.js), minified
+//   dist/shabbat_controller.js       controller (src/main.js), minified
+//   dist/shabbat_ui.js               settings page (src/ui.js + src/tablegen.js), minified
 //   dist/manifest.json               script library manifest (library/manifest.json, checked)
 //
 // The Shelly keeps a running script's source in RAM, so the controller is minified too, but
@@ -88,7 +88,10 @@ function squeezeCss(src) {
 
 async function ui(src) {
   if (!src.includes('"@@VERSION@@"')) throw new Error('src/ui.js: "@@VERSION@@" marker missing');
+  if (!src.includes("//@@TABLEGEN@@")) throw new Error("src/ui.js: //@@TABLEGEN@@ marker missing");
   src = src.replace('"@@VERSION@@"', JSON.stringify(STAMP));
+  // the table code shared with the tests (src/tablegen.js), inside the page's scope
+  src = src.replace("//@@TABLEGEN@@", () => read("src/tablegen.js"));
   const page = await minify(squeezeCss(src), {
     compress: { ecma: 2020 },
     mangle: { toplevel: true }, // runs inside new Function(), nothing outside sees its names
@@ -123,13 +126,8 @@ async function ui(src) {
   );
 }
 
-const main = read("src/main.js");
-const table = read("src/table.js").trim();
-if (!main.includes("//@@TABLE@@")) throw new Error("src/main.js: //@@TABLE@@ marker missing");
-const full = main.replace("//@@TABLE@@", () => table);
-
 const outputs = {
-  "shabbat_controller.js": await controller(full),
+  "shabbat_controller.js": await controller(read("src/main.js")),
   "shabbat_ui.js": await ui(read("src/ui.js"))
 };
 

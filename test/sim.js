@@ -18,8 +18,13 @@ if (process.env.FLAGS) {
     throw new Error("CFG.debug / CFG.diag not found in the built controller");
   CODE = on;
 }
-// Reference windows written by tools/gen_table.py: [start, end, kind 1=Shabbat 2=Yom Tov 3=both]
-const WINDOWS = JSON.parse(fs.readFileSync(path.join(ROOT, "test/windows.json"), "utf8"));
+// Reference tables written by tools/gen_ref.mjs (hebcal, through src/tablegen.js):
+// test/dates/<place>.txt is the shabbat_dates script code, test/windows.json the same windows
+// as {<place>: {tz, w: [[start, end, kind 1=Shabbat 2=Yom Tov 3=both], ...]}}
+const REF = JSON.parse(fs.readFileSync(path.join(ROOT, "test/windows.json"), "utf8"));
+const DATES = {};
+for (const k of Object.keys(REF))
+  DATES[k] = fs.readFileSync(path.join(ROOT, "test/dates", k + ".txt"), "utf8");
 
 let fails = 0;
 function check(cond, msg) {
@@ -30,9 +35,18 @@ function check(cond, msg) {
 }
 
 // ---------- Mock device ----------
+// opts.dates: shabbat_dates code (default: Petah Tikva), null = no such script
 function makeDevice(opts) {
   opts = opts || {};
+  const scripts = [
+    { id: 1, name: "shabbat_controller" },
+    { id: 2, name: "shabbat_ui" }
+  ];
+  const dates = opts.dates === undefined ? DATES.pt : opts.dates;
+  if (dates !== null) scripts.push({ id: 3, name: "shabbat_dates", code: Buffer.from(dates) });
   const dev = {
+    scripts,
+    getCodes: 0,
     now: opts.now === undefined ? 1762525200 : opts.now,
     relay: false,
     relaySets: 0,
@@ -104,12 +118,19 @@ function makeDevice(opts) {
           dev.relaySets++;
           res = {};
         } else if (method === "Script.List") {
-          res = {
-            scripts: [
-              { id: 1, name: "shabbat_controller" },
-              { id: 2, name: "shabbat_ui" }
-            ]
-          };
+          res = { scripts: dev.scripts.map((x) => ({ id: x.id, name: x.name })) };
+        } else if (method === "Script.GetCode") {
+          // like the device: byte ranges, small reads only, an error past the end
+          dev.getCodes++;
+          const sc = dev.scripts.find((x) => x.id === params.id);
+          const off = params.offset || 0;
+          if (!sc || !sc.code) err = -105;
+          else if (!params.len || params.len > 8192) err = -103;
+          else if (off > sc.code.length) err = -103;
+          else {
+            const end = Math.min(sc.code.length, off + params.len);
+            res = { data: sc.code.subarray(off, end).toString("utf8"), left: sc.code.length - end };
+          }
         } else if (method === "Virtual.Delete") {
           if (dev.vcs[params.key]) {
             delete dev.vcs[params.key];
@@ -184,18 +205,21 @@ function makeDevice(opts) {
 }
 
 // ---------- Independent reference (Node Intl for TZ) ----------
-// ranges: [start, end, (unused), kind]
-const ranges = WINDOWS.map((w) => [w[0], w[1], "", w[2]]).sort((a, b) => a[0] - b[0]);
-
-const fmtParts = new Intl.DateTimeFormat("en-CA", {
-  timeZone: "Asia/Jerusalem",
-  year: "numeric",
-  month: "2-digit",
-  day: "2-digit",
-  hour: "2-digit",
-  minute: "2-digit",
-  hourCycle: "h23"
-});
+// ranges: [start, end, (unused), kind] of the place the reference uses (useRef)
+let ranges, fmtParts;
+function useRef(place) {
+  ranges = REF[place].w.map((w) => [w[0], w[1], "", w[2]]).sort((a, b) => a[0] - b[0]);
+  fmtParts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: REF[place].tz,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23"
+  });
+}
+useRef("pt");
 function localParts(t) {
   const o = {};
   for (const p of fmtParts.formatToParts(new Date(t * 1000))) o[p.type] = p.value;
@@ -206,13 +230,18 @@ function localDayNum(t) {
   return Date.UTC(+p.year, +p.month - 1, +p.day) / 86400000;
 }
 function wallToUtc(dayNum, minutes) {
-  // local wall clock -> UTC via search around +2/+3
-  for (const off of [7200, 10800]) {
+  // local wall clock -> UTC via search over the offsets the zone has around that day
+  const offs = [-1, 0, 1].map((k) => {
+    const t = dayNum * 86400 + k * 43200;
+    const p = localParts(t);
+    return Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour, +p.minute) / 1000 - t;
+  });
+  for (const off of offs) {
     const t = dayNum * 86400 + minutes * 60 - off;
     const p = localParts(t);
     if (localDayNum(t) === dayNum && +p.hour * 60 + +p.minute === minutes) return t;
   }
-  return dayNum * 86400 + minutes * 60 - 7200;
+  return dayNum * 86400 + minutes * 60 - offs[1];
 }
 function refOn(t, timers, skipStart) {
   const r = ranges.find((x) => x[0] <= t && t < x[1]);
@@ -339,36 +368,85 @@ function refOn(t, timers, skipStart) {
   console.log("T0b cleanup: deleted", d.dels);
 }
 
-// ---------- T1: table decode & kinds ----------
-{
-  const d = makeDevice();
+// ---------- T1: table decode & kinds; T2: local time (each reference place) ----------
+for (const place of Object.keys(REF)) {
+  useRef(place);
+  const d = makeDevice({ dates: DATES[place] });
   const N = vm.runInContext("TBL_N", d.sb);
-  check(N === ranges.length, `window count ${N} vs ${ranges.length}`);
+  check(N === ranges.length, `${place}: window count ${N} vs ${ranges.length}`);
   let bad = 0;
   for (let i = 0; i < N; i++) {
     const w = vm.runInContext(`getWin(${i})`, d.sb);
     if (w.s !== ranges[i][0] || w.e !== ranges[i][1] || w.k !== ranges[i][3]) bad++;
   }
-  check(bad === 0, "window mismatches " + bad);
-  console.log("T1 table decode:", N, "windows, kinds OK");
-}
-
-// ---------- T2: local time ----------
-{
-  const d = makeDevice();
-  let bad = 0;
+  check(bad === 0, place + ": window mismatches " + bad);
+  check(d.getCodes === 1, place + ": table read in one 4 KB piece: " + d.getCodes);
+  let badT = 0;
   for (let t = 1735689600; t < 1924992000; t += 3 * 3600 + 17) {
     const p = localParts(t);
-    if (vm.runInContext(`fmtTime(${t})`, d.sb) !== `${p.hour}:${p.minute}`) bad++;
+    if (vm.runInContext(`fmtTime(${t})`, d.sb) !== `${p.hour}:${p.minute}`) badT++;
   }
-  check(bad === 0, `local time mismatches: ${bad}`);
-  console.log("T2 local time 2025-2030:", bad ? "FAIL" : "OK");
+  check(badT === 0, `${place}: local time mismatches: ${badT}`);
+  const g = d.call("ShabbatGet", {}).d;
+  check(
+    g.st.tz === REF[place].tz && g.st.loc.length > 0 && g.did === 3,
+    place + ": place reported"
+  );
+  console.log(`T1/T2 ${place} (${REF[place].tz}): ${N} windows, kinds and local time 2025-2030 OK`);
+}
+useRef("pt");
+
+// ---------- T1b: no table, a broken table, reading it again ----------
+{
+  const d = makeDevice({ dates: null, now: 1762597800 }); // Sat 08/11/2025 12:30
+  d.tick();
+  let g = d.call("ShabbatGet", {}).d;
+  check(
+    vm.runInContext("TBL_N", d.sb) === 0 && g.st.cur === null && g.st.next === null && !g.st.loc,
+    "no shabbat_dates: no windows"
+  );
+  check(d.relay === false && g.st.end === 0 && g.did === -1, "no table -> relay off");
+  check(d.call("ShabbatPreview", { n: 3 }).d.w.length === 0, "no table -> empty forecast");
+  // the page writes the table, then asks the controller to read it again
+  d.scripts.push({ id: 3, name: "shabbat_dates", code: Buffer.from(DATES.pt) });
+  let answered = null;
+  d.rpc.ShabbatSet(
+    {
+      result(x) {
+        answered = JSON.parse(JSON.stringify(x));
+      },
+      error(c, m) {
+        answered = { err: m };
+      }
+    },
+    { reload: true }
+  );
+  check(answered === null, "reload: answered only after the read");
+  d.flush();
+  check(answered && answered.st && answered.st.cur && answered.did === 3, "reload: window now");
+  check(d.relay === true, "reload: relay follows the new table (Sat 12:30 ON)");
+  // a broken table is ignored: no windows
+  d.scripts[2].code = Buffer.from("// shabbat_dates v1\n//N x\n//W ABC\n");
+  d.call("ShabbatSet", { reload: true });
+  g = d.call("ShabbatGet", {}).d;
+  check(g.st.cur === null && vm.runInContext("TBL_N", d.sb) === 0, "broken table -> no windows");
+  d.scripts[2].code = Buffer.from("console.log(1)");
+  d.call("ShabbatSet", { reload: true });
+  check(vm.runInContext("TBL_N", d.sb) === 0, "not a table -> no windows");
+  // a table longer than one read
+  const big = DATES.pt.replace("//W ", "//X " + "a".repeat(5000) + "\n//W ");
+  d.scripts[2].code = Buffer.from(big);
+  d.getCodes = 0;
+  d.call("ShabbatSet", { reload: true });
+  check(vm.runInContext("TBL_N", d.sb) === ranges.length && d.getCodes === 3, "read in pieces");
+  console.log("T1b no table / broken table / reload: OK");
 }
 
 // ---------- T3: relay sweep vs reference ----------
-function sweep(timers, label, skipIdx) {
+function sweep(timers, label, skipIdx, place) {
+  useRef(place || "pt");
   const kvs = timers ? { shabbat_elev_cfg: JSON.stringify({ t: timers, a: 1, s: 0 }) } : {};
-  const dev = makeDevice({ kvs, now: ranges[0][0] - 86400 });
+  const dev = makeDevice({ kvs, now: ranges[0][0] - 86400, dates: DATES[place || "pt"] });
   timers = timers || vm.runInContext("DEFAULT_TIMERS", dev.sb);
   let skip = 0;
   let mism = 0,
@@ -424,6 +502,19 @@ if (!process.env.QUICK) {
     "busy: applies/days/overnight/disabled",
     100
   );
+  sweep(
+    [
+      [0, 30, 60, 0, 0, 1],
+      [1, 600, 120, 0, 1, 1],
+      [1, 540, 60, 2, 2, 1],
+      [2, -30, 30, 0, 0, 1]
+    ],
+    "New York: two-day Yom Tov",
+    undefined,
+    "ny"
+  );
+  sweep(null, "Sydney: southern DST", undefined, "syd");
+  useRef("pt");
 }
 
 // ---------- T4: RPC API ----------
@@ -478,7 +569,7 @@ if (!process.env.QUICK) {
   check(dev.relay === false && !r.d.st.test, "test cleared");
   // skip
   r = dev.call("ShabbatSet", { skip: true });
-  check(r.d.cfg.skip === 1762525740 || r.d.cfg.skip > 0, "skip set to next window");
+  check(r.d.cfg.skip === 1762525500 || r.d.cfg.skip > 0, "skip set to next window");
   dev.now = 1762597800;
   dev.tick();
   check(dev.relay === false, "skipped window -> OFF");
@@ -635,7 +726,10 @@ if (!process.env.QUICK) {
   );
   let b = JSON.parse(q.body);
   const pv = dev.call("ShabbatPreview", { n: 6 }).d.w;
-  check(b.v === 1 && b.now === FRI && b.auto === 1 && b.w.length === 6, "body header");
+  check(
+    b.v === 1 && b.now === FRI && b.auto === 1 && b.tz === "Asia/Jerusalem" && b.w.length === 6,
+    "body header"
+  );
   check(
     b.w.every(
       (w, i) =>
@@ -648,7 +742,7 @@ if (!process.env.QUICK) {
     ),
     "body windows match the forecast"
   );
-  check(b.w[0].s === 1793975400 && b.w[0].on.length === 3, "next Shabbat with 3 ON times");
+  check(b.w[0].s === 1793975160 && b.w[0].on.length === 3, "next Shabbat with 3 ON times");
   check(q.body.length < 2000, "body size " + q.body.length);
   r = dev.call("ShabbatPub", {});
   check(r.d.ok === FRI && r.d.err === "" && r.d.due >= FRI + 82800, "ok, next send in ~a day");

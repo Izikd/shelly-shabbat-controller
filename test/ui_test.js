@@ -4,6 +4,7 @@
 "use strict";
 let srvRef = null,
   srv2Ref = null,
+  srv3Ref = null,
   browserRef = null;
 const { chromium } = require("playwright");
 const { spawn } = require("child_process");
@@ -120,10 +121,14 @@ const listening = (proc) =>
   refusing = false;
   const statusTxt = await page.textContent("main");
   check(
-    /שבת/.test(statusTxt) && /ו׳ 06\/11 16:30/.test(statusTxt),
-    "status shows next Shabbat Fri 06/11 16:30: " + statusTxt.slice(0, 200)
+    /שבת/.test(statusTxt) && /ו׳ 06\/11 16:26/.test(statusTxt),
+    "status shows next Shabbat Fri 06/11 16:26: " + statusTxt.slice(0, 200)
   );
-  check(/ו׳ 06\/11 16:45/.test(statusTxt), "next ON Fri 16:45");
+  check(/ו׳ 06\/11 16:41/.test(statusTxt), "next ON Fri 16:41");
+  check(
+    /Petah Tiqwa/.test(statusTxt) && /Asia\/Jerusalem · זמנים עד/.test(statusTxt),
+    "location shown: " + statusTxt.slice(0, 120)
+  );
   await page.screenshot({ path: path.join(out, "1-status.png") });
 
   await page.click("role=tab[name='טיימרים']");
@@ -169,7 +174,7 @@ const listening = (proc) =>
   await page.click("button[aria-label='דלג על החלון הקרוב']");
   await page.waitForSelector("text=(מדולג)");
   const sk = await api("ShabbatGet");
-  check(sk.cfg.skip === 1793975400, "skip = start of Fri 06/11 window (" + sk.cfg.skip + ")");
+  check(sk.cfg.skip === 1793975160, "skip = start of Fri 06/11 window (" + sk.cfg.skip + ")");
   await page.screenshot({ path: path.join(out, "6-status-skip.png") });
   await page.click("button[aria-label='דלג על החלון הקרוב']");
   await page.waitForSelector("text=(מדולג)", { state: "detached" });
@@ -226,13 +231,13 @@ const listening = (proc) =>
   await pubPage.goto(link);
   const pubTxt = await pubPage.textContent("body");
   check(
-    /מעלית הרצל 5/.test(pubTxt) && /ו׳ 06\/11 16:30 ← ש׳ 07\/11 17:25/.test(pubTxt),
+    /מעלית הרצל 5/.test(pubTxt) && /ו׳ 06\/11 16:26 ← ש׳ 07\/11 17:23/.test(pubTxt),
     "public page shows the next Shabbat: " + pubTxt.slice(0, 160)
   );
-  check(/12:30–13:30/.test(pubTxt) && /16:45–17:15/.test(pubTxt), "public page ON times");
+  check(/12:30–13:30/.test(pubTxt) && /16:41–17:11/.test(pubTxt), "public page ON times");
   await pubPage.screenshot({ path: path.join(out, "10-public.png"), fullPage: true });
   await pubPage.click("text=English");
-  await pubPage.waitForSelector("text=Fri 06/11 16:30 → Sat 07/11 17:25");
+  await pubPage.waitForSelector("text=Fri 06/11 16:26 → Sat 07/11 17:23");
   await pubPage.screenshot({ path: path.join(out, "10-public-en.png"), fullPage: true });
   await pubPage.close();
   await page.fill("#pn", "Herzl 5");
@@ -254,7 +259,7 @@ const listening = (proc) =>
   const nAll = await page.locator(".tr").count();
   check(nAll === 232, "upcoming windows listed: " + nAll);
   const firstRow = await page.textContent(".tr >> nth=0");
-  check(/ו׳ 06\/11 16:30/.test(firstRow), "first upcoming row is Fri 06/11: " + firstRow);
+  check(/ו׳ 06\/11 16:26/.test(firstRow), "first upcoming row is Fri 06/11: " + firstRow);
   await page.screenshot({ path: path.join(out, "8-table.png") });
   await page.click(".pill:has-text('חגים בלבד')");
   const nHol = await page.locator(".tr").count();
@@ -292,7 +297,7 @@ const listening = (proc) =>
   );
   const enTxt = await en.textContent("main");
   check(
-    /Fri 06\/11 16:30/.test(enTxt) && /Heshvan/.test(enTxt),
+    /Fri 06\/11 16:26/.test(enTxt) && /Heshvan/.test(enTxt),
     "English dates: " + enTxt.slice(0, 160)
   );
   check(/ → /.test(enTxt), "arrow points right in English");
@@ -540,6 +545,134 @@ const listening = (proc) =>
   check(/version v0\.2\.0 /.test(await ctrlFirst()), "back on stable v0.2.0");
   srv2.kill();
 
+  // ---------- location: hebcal from the CDN, computed in the browser, written to the device ----------
+  // A third mock device starts without shabbat_dates. The CDNs are served from node_modules
+  // (the same npm files jsDelivr and unpkg serve); the integrity hashes in src/ui.js must
+  // match them.
+  const uiSrc = fs.readFileSync(path.join(__dirname, "../src/ui.js"), "utf8");
+  const libs = [...uiSrc.matchAll(/\[\s*"(@hebcal\/[a-z]+)@([\d.]+)",\s*"(sha384-[^"]+)"\s*\]/g)];
+  check(libs.length === 2, "two hebcal libraries pinned in src/ui.js");
+  const npmFile = {};
+  for (const [, name, ver, sri] of libs) {
+    const dir = path.join(__dirname, "../node_modules", name);
+    const pkg = JSON.parse(fs.readFileSync(path.join(dir, "package.json"), "utf8"));
+    check(pkg.version === ver, `${name}: page pins ${ver}, devDependency is ${pkg.version}`);
+    const body = fs.readFileSync(path.join(dir, "dist/bundle.min.js"));
+    const hash = "sha384-" + require("crypto").createHash("sha384").update(body).digest("base64");
+    check(hash === sri, `${name}: integrity hash matches the npm file`);
+    npmFile[`${name}@${ver}/dist/bundle.min.js`] = body;
+  }
+  const PORT3 = 8094;
+  const srv3 = (srv3Ref = spawn(
+    "node",
+    [path.join(__dirname, "mockdevice.js"), String(PORT3), String(NOW), "dev"],
+    {
+      stdio: ["ignore", "pipe", "inherit"],
+      env: Object.assign({}, process.env, { MOCK_DATES: "none" })
+    }
+  ));
+  await listening(srv3);
+  const lctx = await browser.newContext({ locale: "en-US", timezoneId: "Europe/London" });
+  const cdn = { jsdelivr: 0, unpkg: 0, mode: "ok" }; // mode: ok | nojsdelivr | tampered
+  const serveCdn = (host, prefix) =>
+    lctx.route(`https://${host}/**`, (route) => {
+      cdn[host.split(".").slice(-2)[0]]++;
+      const name = route.request().url().slice(prefix.length);
+      if (cdn.mode === "nojsdelivr" && host === "cdn.jsdelivr.net") return route.abort();
+      if (!npmFile[name]) return route.fulfill({ status: 404, body: "404" });
+      let body = npmFile[name];
+      if (cdn.mode === "tampered") body = Buffer.concat([body, Buffer.from(";")]);
+      route.fulfill({
+        status: 200,
+        contentType: "application/javascript; charset=utf-8",
+        headers: { "access-control-allow-origin": "*" },
+        body
+      });
+    });
+  await serveCdn("cdn.jsdelivr.net", "https://cdn.jsdelivr.net/npm/");
+  await serveCdn("unpkg.com", "https://unpkg.com/");
+  const lp = await lctx.newPage();
+  lp.setDefaultTimeout(15000);
+  lp.on("pageerror", (e) => errors.push("loc: " + e.message));
+  const api3 = (m, p) =>
+    lp.evaluate(
+      async ([m, p]) =>
+        (await fetch("/rpc/" + m, { method: "POST", body: JSON.stringify(p || {}) })).json(),
+      [m, p]
+    );
+  await lp.goto(`http://localhost:${PORT3}/script/1/ui`);
+  await lp.waitForSelector("text=No location set");
+  let g3 = await api3("Script.ShabbatGet", { id: 1 });
+  check(!g3.st.loc && g3.st.next === null && g3.st.relay === false, "no location: no windows");
+  check(cdn.jsdelivr + cdn.unpkg === 0, "no CDN request before Set location");
+  await lp.screenshot({ path: path.join(out, "loc-1-none.png"), fullPage: true });
+  // a file that does not match its integrity hash is refused, on both CDNs
+  cdn.mode = "tampered";
+  await lp.click("text=Set location");
+  await lp.waitForSelector("text=Cannot load hebcal");
+  check(
+    cdn.jsdelivr === 1 && cdn.unpkg === 1,
+    "tampered file refused, unpkg tried: " + JSON.stringify(cdn)
+  );
+  await lp.click("text=Cancel");
+  // jsDelivr unreachable: unpkg
+  cdn.mode = "nojsdelivr";
+  await lp.click("text=Set location");
+  await lp.waitForSelector("#lq");
+  check(cdn.unpkg === 3, "loaded from unpkg after jsDelivr failed: " + JSON.stringify(cdn));
+  await lp.fill("#lq", "jerusa");
+  await lp.click(".pill:has-text('Jerusalem · Israel')");
+  check((await lp.inputValue("#ltz")) === "Asia/Jerusalem", "city fills the time zone");
+  await lp.screenshot({ path: path.join(out, "loc-2-edit.png"), fullPage: true });
+  await lp.click("text=Save location");
+  await lp.waitForSelector("text=Location saved");
+  g3 = await api3("Script.ShabbatGet", { id: 1 });
+  check(
+    g3.st.loc === "Jerusalem" && g3.st.tz === "Asia/Jerusalem" && g3.did === 3,
+    "Jerusalem saved"
+  );
+  // hebcal's Jerusalem custom: candles 40 minutes before sunset (Petah Tikva: 18)
+  const ptNext = require("./windows.json").pt.w.find((w) => w[1] > NOW);
+  const early = (ptNext[0] - g3.st.next.s) / 60;
+  check(
+    early >= 18 && early <= 26,
+    "Jerusalem candle lighting ~22 min before Petah Tikva's: " + early
+  );
+  check(g3.st.end - NOW > 4.8 * 365 * 86400, "5 years of windows");
+  const sd = await api3("Script.GetCode", { id: 3, offset: 0, len: 4096 });
+  check(
+    sd.left === 0 && /^\/\/ shabbat_dates v1 /.test(sd.data),
+    "one 4 KB read: " + sd.data.length
+  );
+  check((await api3("Script.GetStatus", { id: 3 })).running === false, "shabbat_dates not running");
+  await lp.screenshot({ path: path.join(out, "loc-3-saved.png"), fullPage: true });
+  // abroad, by coordinates: New York
+  await lp.waitForSelector("text=Location saved", { state: "detached" });
+  await lp.click("text=Change location");
+  await lp.waitForSelector("#lq");
+  check((await lp.inputValue("#lla")) === "31.76904", "editor starts from the saved place");
+  await lp.fill("#lla", "abc");
+  await lp.click("text=Save location");
+  await lp.waitForSelector("text=Invalid coordinates");
+  await lp.fill("#lla", "40.71");
+  await lp.fill("#llo", "-74.01");
+  await lp.fill("#ltz", "America/New_York");
+  await lp.click("button[aria-label='Israel (one-day Yom Tov)']");
+  await lp.click("text=Save location");
+  await lp.waitForSelector("text=Location saved");
+  g3 = await api3("Script.ShabbatGet", { id: 1 });
+  check(g3.st.loc === "40.71, -74.01" && g3.st.tz === "America/New_York", "coordinates saved");
+  const stTxt = await lp.textContent("main");
+  check(/America\/New_York · times until/.test(stTxt), "New York shown: " + stTxt.slice(0, 120));
+  // shown in New York time: Fri 06/11/2026 candle lighting is in the afternoon there
+  check(/Fri 06\/11 16:\d\d/.test(stTxt), "next window in New York time: " + stTxt.slice(0, 200));
+  await lp.click("role=tab[name='Schedule']");
+  await lp.click(".pill:has-text('Holidays only')");
+  const nyHol = await lp.textContent("main");
+  check(/Pesach \+ Shabbat|Pesach ·/.test(nyHol) && /Simchat Torah/.test(nyHol), "abroad holidays");
+  await lp.screenshot({ path: path.join(out, "loc-4-newyork.png"), fullPage: true });
+  srv3.kill();
+
   check(errors.length === 0, "page errors: " + errors.join(" | "));
   console.log(fails ? fails + " UI FAILURE(S)" : "UI TESTS PASSED");
   await browser.close();
@@ -554,6 +687,7 @@ const listening = (proc) =>
     try {
       srvRef && srvRef.kill();
       srv2Ref && srv2Ref.kill();
+      srv3Ref && srv3Ref.kill();
       browserRef && browserRef.close();
     } catch (x) {}
   });

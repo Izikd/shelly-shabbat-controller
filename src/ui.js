@@ -20,8 +20,9 @@ if (typeof document !== "undefined")
       return m ? Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]) / 1000 : 0;
     }
     var UI_BUILT = builtAt(UI_STAMP);
+    // times are shown in the time zone of the place the table was computed for (st.tz)
     var ID = window.SE_ID,
-      TZ = "Asia/Jerusalem";
+      TZ = "";
     // schedule service for the public page (service/ in this repository); a page created on
     // a device keeps the address it was created with (stored on the device)
     var PUB_URL = "https://shabbat-schedule.izikdd.workers.dev";
@@ -81,7 +82,28 @@ if (typeof document !== "undefined")
         autoOff: "האוטומציה כבויה",
         onNowUntil: "פועל עכשיו עד {0}",
         noOnNext: "אין הפעלות בחלון הקרוב",
-        tableEnds: "טבלת הזמנים מסתיימת ב-{0} – יש לעדכן את הסקריפט",
+        tableEnds: "הזמנים מסתיימים ב-{0} – בחר שוב מיקום כדי להאריך אותם",
+        loc: "מיקום",
+        locNone: "לא נבחר מיקום – הממסר לא יופעל עד שתבחר מיקום.",
+        locInfo: "{0} · זמנים עד {1}",
+        locSet: "בחר מיקום",
+        locChange: "שנה מיקום",
+        locHint: "הזמנים מחושבים בדפדפן עם hebcal, שנטען מהאינטרנט רק בלחיצה.",
+        locLoading: "טוען את hebcal…",
+        locLoadErr: "לא ניתן לטעון את hebcal: {0}",
+        locSearch: "חיפוש עיר (שמות באנגלית)",
+        locOr: "או קואורדינטות ואזור זמן:",
+        locLat: "קו רוחב",
+        locLon: "קו אורך",
+        locTz: "אזור זמן",
+        locIl: "ישראל (יום טוב אחד)",
+        locSave: "שמור מיקום",
+        cancel: "ביטול",
+        locBad: "קואורדינטות לא תקינות",
+        locCalc: "מחשב זמנים…",
+        locSaving: "שומר במכשיר… {0}%",
+        locDone: "המיקום נשמר ✓",
+        locFail: "שמירת המיקום נכשלה: {0}",
         notSynced: "השעון לא מסונכרן – הממסר כבוי ליתר ביטחון",
         manualTitle: "הממסר הופעל/כובה ידנית",
         manualBody: "האוטומציה לא תשנה את מצבו עד האירוע הבא בלוח הזמנים.",
@@ -95,7 +117,7 @@ if (typeof document !== "undefined")
         skip: "דלג על החלון הקרוב",
         skipHint: "חד-פעמי, חוזר לפעול אחריו",
         testTime: "זמן בדיקה",
-        testHint: "מדמה שעה אחרת (שעון ישראל) כדי לבדוק את הממסר. לא נשמר אחרי הפעלה מחדש.",
+        testHint: "מדמה שעה אחרת (לפי שעון המיקום) כדי לבדוק את הממסר. לא נשמר אחרי הפעלה מחדש.",
         clear: "נקה",
         testActive: "מצב בדיקה פעיל – הממסר פועל לפי {0}",
         cause: {
@@ -254,7 +276,29 @@ if (typeof document !== "undefined")
         autoOff: "Automation is off",
         onNowUntil: "On now until {0}",
         noOnNext: "No relay time in the next window",
-        tableEnds: "The schedule table ends on {0} – update the script",
+        tableEnds: "The times end on {0} – set the location again to extend them",
+        loc: "Location",
+        locNone: "No location set – the relay will not switch until you set one.",
+        locInfo: "{0} · times until {1}",
+        locSet: "Set location",
+        locChange: "Change location",
+        locHint:
+          "Times are computed in the browser with hebcal, loaded from the internet only when pressed.",
+        locLoading: "Loading hebcal…",
+        locLoadErr: "Cannot load hebcal: {0}",
+        locSearch: "Search a city",
+        locOr: "Or coordinates and time zone:",
+        locLat: "Latitude",
+        locLon: "Longitude",
+        locTz: "Time zone",
+        locIl: "Israel (one-day Yom Tov)",
+        locSave: "Save location",
+        cancel: "Cancel",
+        locBad: "Invalid coordinates",
+        locCalc: "Calculating times…",
+        locSaving: "Saving to the device… {0}%",
+        locDone: "Location saved ✓",
+        locFail: "Saving the location failed: {0}",
         notSynced: "Clock not synced – relay kept off for safety",
         manualTitle: "The relay was switched manually",
         manualBody: "Automation will leave it as it is until the next timer event.",
@@ -268,7 +312,8 @@ if (typeof document !== "undefined")
         skip: "Skip the next window",
         skipHint: "One time; resumes after it",
         testTime: "Test time",
-        testHint: "Simulates another time (Israel time) to check the relay. Cleared on restart.",
+        testHint:
+          "Simulates another time (the location's time) to check the relay. Cleared on restart.",
         clear: "Clear",
         testActive: "Test mode – the relay follows {0}",
         cause: {
@@ -526,6 +571,9 @@ if (typeof document !== "undefined")
       S.st = j.st;
       S.log = j.log || "";
       S.base = j.base;
+      if (S.did !== j.did) S.tbl = null; // another table: read it again
+      S.did = j.did;
+      setTz(j.st.tz);
       if (!dirty()) {
         S.timers = j.cfg.timers.map(toObj);
         S.saved = JSON.stringify(j.cfg.timers);
@@ -564,17 +612,34 @@ if (typeof document !== "undefined")
       rpc("ShabbatGet", {}, load);
     }
 
-    // ---------- time formatting (Israel time) ----------
-    var DF = new Intl.DateTimeFormat("en-GB", {
-      timeZone: TZ,
-      weekday: "short",
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-      hourCycle: "h23"
-    });
+    // ---------- time formatting (time zone of the place; the browser's before one is set) ----------
+    var DF, HDF;
+    function setTz(tz) {
+      tz = tz || Intl.DateTimeFormat().resolvedOptions().timeZone;
+      if (tz === TZ) return;
+      TZ = tz;
+      DF = new Intl.DateTimeFormat("en-GB", {
+        timeZone: TZ,
+        weekday: "short",
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+        hourCycle: "h23"
+      });
+      // Hebrew-calendar date from the browser's built-in Hebrew calendar:
+      // Hebrew "כ״ז בחשוון" (day in Hebrew numerals), English "27 Heshvan"
+      HDF = {};
+      ["he", "en"].forEach(function (l) {
+        HDF[l] = new Intl.DateTimeFormat(l + "-u-ca-hebrew", {
+          timeZone: TZ,
+          day: "numeric",
+          month: "long"
+        });
+      });
+    }
+    setTz("");
     function parts(t) {
       var o = {};
       DF.formatToParts(new Date(t * 1000)).forEach(function (p) {
@@ -600,7 +665,7 @@ if (typeof document !== "undefined")
       );
     }
     function fromLocalInput(v) {
-      // "YYYY-MM-DDTHH:MM" in Israel time -> UTC seconds
+      // "YYYY-MM-DDTHH:MM" in the place's time -> UTC seconds
       var g =
         Date.UTC(
           +v.substr(0, 4),
@@ -616,16 +681,6 @@ if (typeof document !== "undefined")
       var p = parts(t);
       return p.year + "-" + p.month + "-" + p.day + "T" + p.hour + ":" + p.minute;
     }
-    // Hebrew-calendar date from the browser's built-in Hebrew calendar:
-    // Hebrew "כ״ז בחשוון" (day in Hebrew numerals), English "27 Heshvan"
-    var HDF = {};
-    ["he", "en"].forEach(function (l) {
-      HDF[l] = new Intl.DateTimeFormat(l + "-u-ca-hebrew", {
-        timeZone: TZ,
-        day: "numeric",
-        month: "long"
-      });
-    });
     function gem(n) {
       if (n === 15) return "ט״ו";
       if (n === 16) return "ט״ז";
@@ -746,12 +801,14 @@ if (typeof document !== "undefined")
             ? full(st.nextOn[0]) + " · " + mm(Math.round((st.nextOn[1] - st.nextOn[0]) / 60))
             : L.noOnNext;
       var warn =
-        st.end - st.now < 180 * 86400
-          ? h("div", { cls: "warn" }, tr(L.tableEnds, day(st.end)))
+        st.end && st.end - st.now < 365 * 86400
+          ? h("div", { cls: "warn" }, tr(L.tableEnds, day(st.end) + "/" + parts(st.end).year))
           : null;
       return [
         !st.synced ? h("div", { cls: "warn" }, L.notSynced) : null,
         warn,
+        // on top until a place is set, then below the daily controls
+        st.loc ? null : viewLoc(),
         st.manual
           ? h(
               "div",
@@ -853,6 +910,7 @@ if (typeof document !== "undefined")
           ),
           st.test ? h("div", { cls: "warn" }, tr(L.testActive, full(st.test))) : null
         ),
+        st.loc ? viewLoc() : null,
         viewPub(),
         viewLog(),
         viewUpdate(),
@@ -1127,7 +1185,7 @@ if (typeof document !== "undefined")
       function pct(n, total) {
         return total ? Math.round((n * 100) / total) + "%" : "—";
       }
-      // build time in Israel time, ISO-like: "2026-11-06 10:20"
+      // build time in the place's time, ISO-like: "2026-11-06 10:20"
       function stampTime(t) {
         if (!t) return "—";
         var p = parts(t);
@@ -1409,9 +1467,10 @@ if (typeof document !== "undefined")
       ];
     }
 
-    // ---------- full schedule: decoded in the browser from the controller's own code ----------
-    // (Script.GetCode is served by the firmware: no memory cost for the controller)
-    var A64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+-";
+    // ---------- the table: computed with hebcal, stored in the shabbat_dates script ----------
+    // src/tablegen.js (sdBuild, sdParse, ...), put here by tools/build.mjs
+    //@@TABLEGEN@@
+
     // A script's code via Script.GetCode in 4 KB pieces, asked 4 at a time (dev keeps at most
     // 2 in flight) - the same pattern as the loader in main.js (fast, small memory spikes on the device). The built scripts are
     // ASCII, so offsets in bytes are offsets in characters.
@@ -1444,6 +1503,311 @@ if (typeof document !== "undefined")
         return batch(0);
       });
     }
+    // ---------- location: hebcal in the browser, only when the user sets it ----------
+    // hebcal (@hebcal/core + its city list @hebcal/cities; GPL, not part of this project) is
+    // loaded from a CDN only when "Set location" is pressed - never on load. Exact versions with
+    // integrity hashes (test/ui_test.js checks them against node_modules), jsDelivr first,
+    // unpkg if that fails. The page computes 5 years of windows (src/tablegen.js), writes them
+    // as the code of the never-started script shabbat_dates and asks the controller to read it.
+    var HC_LIBS = [
+      [
+        "@hebcal/core@6.14.6",
+        "sha384-huTePbTparvpJ8OdNSTPdL+Uz8Pc5HJIb3mY8ULt8TQB62pLqxpx2QQDYQ4uxF37"
+      ],
+      [
+        "@hebcal/cities@6.2.2",
+        "sha384-e8+w5wcWoqEOqF5QtSvIIQuT0FNRno4IuGixwjSzH5VrjcFq4IJHz3k6e421o66Y"
+      ]
+    ];
+    var HC_CDN = ["https://cdn.jsdelivr.net/npm/", "https://unpkg.com/"];
+    var hcLoad = null,
+      HC_CITIES = [];
+    function loadLib(lib, i) {
+      return new Promise(function (ok, no) {
+        var el = h("script", {
+          src: HC_CDN[i] + lib[0] + "/dist/bundle.min.js",
+          integrity: lib[1],
+          crossorigin: "anonymous"
+        });
+        el.onload = ok;
+        el.onerror = function () {
+          el.remove();
+          no(new Error(lib[0]));
+        };
+        document.head.appendChild(el);
+      }).catch(function (e) {
+        if (i + 1 < HC_CDN.length) return loadLib(lib, i + 1);
+        throw e;
+      });
+    }
+    function loadHebcal() {
+      if (!hcLoad)
+        hcLoad = loadLib(HC_LIBS[0], 0)
+          .then(function () {
+            // @hebcal/cities adds each city (and its aliases) with Location.addLocation:
+            // listen in for the list to search
+            var add = hebcal.Location.addLocation;
+            hebcal.Location.addLocation = function (n, l) {
+              if (HC_CITIES.indexOf(l) < 0) HC_CITIES.push(l);
+              return add.apply(this, arguments);
+            };
+            return loadLib(HC_LIBS[1], 0);
+          })
+          .catch(function (e) {
+            hcLoad = null;
+            throw e;
+          });
+      return hcLoad;
+    }
+    function cityLabel(l) {
+      var cc = l.getCountryCode();
+      return l.getName() + " · " + (hebcal.cities.countryNames[cc] || cc);
+    }
+    function locOpen() {
+      var P = (S.loc = {
+        msg: L.locLoading,
+        q: "",
+        la: "",
+        lo: "",
+        tz: TZ,
+        il: TZ === "Asia/Jerusalem"
+      });
+      render();
+      Promise.all([
+        loadHebcal(),
+        // the current place, to start from
+        S.did >= 0
+          ? readCode(S.did)
+              .then(sdParse)
+              .catch(function () {})
+          : null
+      ])
+        .then(function (r) {
+          var m = r[1] && r[1].meta;
+          if (m && m.tz) {
+            P.n = m.n;
+            P.cc = m.cc;
+            P.la = "" + m.la;
+            P.lo = "" + m.lo;
+            P.tz = m.tz;
+            P.il = !!m.il;
+          }
+          P.ready = true;
+          render();
+        })
+        .catch(function (e) {
+          P.err = tr(L.locLoadErr, e.message);
+          render();
+        });
+    }
+    function locSave() {
+      var P = S.loc,
+        la = parseFloat(P.la),
+        lo = parseFloat(P.lo);
+      if (!(Math.abs(la) <= 90 && Math.abs(lo) <= 180)) {
+        P.err = L.locBad;
+        return render();
+      }
+      var place = { n: P.n || la + ", " + lo, cc: P.cc || "", la: la, lo: lo, tz: P.tz, il: P.il },
+        code;
+      P.busy = true;
+      P.err = "";
+      P.msg = L.locCalc;
+      render();
+      new Promise(function (ok) {
+        setTimeout(ok, 30); // show the message first
+      })
+        .then(function () {
+          var now = Date.now(),
+            from = new Date(now - 30 * 86400000);
+          code = sdBuild(
+            hebcal,
+            place,
+            from,
+            new Date(from.getTime() + 5 * 365.25 * 86400000),
+            hebcal.version,
+            Math.floor(now / 1000)
+          );
+          return devRpc("Script.List");
+        })
+        .then(function (l) {
+          var d = (l.scripts || []).filter(function (x) {
+            return (x.name || "").indexOf("shabbat_dates") === 0;
+          })[0];
+          return d
+            ? d.id
+            : devRpc("Script.Create", { name: "shabbat_dates" }).then(function (r) {
+                return r.id;
+              });
+        })
+        .then(function (id) {
+          return putCode(id, code, L.locSaving, P);
+        })
+        .then(function () {
+          return devRpc("Script.ShabbatSet", { id: ID, reload: true });
+        })
+        .then(function (j) {
+          S.loc = null;
+          S.tbl = null;
+          S.flash = L.locDone;
+          load(j);
+          preview();
+          setTimeout(function () {
+            S.flash = "";
+            render();
+          }, 2500);
+        })
+        .catch(function (e) {
+          P.busy = false;
+          P.err = tr(L.locFail, e.message);
+          render();
+        });
+    }
+    function viewLoc() {
+      var st = S.st,
+        P = S.loc;
+      var box = h("div", { cls: "card col" }, h("b", null, L.loc));
+      if (!P) {
+        add(
+          box,
+          st.loc
+            ? [
+                h("span", { cls: "v" }, st.loc),
+                h(
+                  "span",
+                  { cls: "s" },
+                  tr(L.locInfo, st.tz, day(st.end) + "/" + parts(st.end).year)
+                )
+              ]
+            : h("div", { cls: "warn" }, L.locNone)
+        );
+        add(box, [
+          h("span", { cls: "s" }, L.locHint),
+          h(
+            "div",
+            { cls: "line" },
+            h(
+              "button",
+              { cls: st.loc ? "btn" : "btn pri", onclick: locOpen },
+              st.loc ? L.locChange : L.locSet
+            )
+          )
+        ]);
+        return box;
+      }
+      var cancel = h(
+        "button",
+        {
+          cls: "btn",
+          onclick: function () {
+            S.loc = null;
+            render();
+          }
+        },
+        L.cancel
+      );
+      if (P.err) add(box, h("div", { cls: "warn" }, P.err));
+      if (!P.ready || P.busy) {
+        add(box, [h("span", { cls: "s", role: "status" }, P.msg), P.busy ? null : cancel]);
+        return box;
+      }
+      function field(k, label, attrs) {
+        attrs.id = "l" + k;
+        attrs.value = P[k];
+        attrs.oninput = function (e) {
+          P[k] = e.target.value;
+          P.n = P.cc = ""; // typed by hand: the name becomes the coordinates
+        };
+        return h(
+          "div",
+          { cls: "col0 grow" },
+          h("label", { cls: "lab", for: attrs.id }, label),
+          h("input", attrs)
+        );
+      }
+      // the search updates only its results, so the field keeps the focus while typing
+      var hits = h("div", { cls: "line wrap" });
+      function find() {
+        var q = P.q.toLowerCase();
+        hits.replaceChildren();
+        if (q.length < 2) return;
+        add(
+          hits,
+          HC_CITIES.filter(function (l) {
+            return cityLabel(l).toLowerCase().indexOf(q) >= 0;
+          })
+            .slice(0, 8)
+            .map(function (l) {
+              return h(
+                "button",
+                {
+                  cls: "pill",
+                  onclick: function () {
+                    P.n = l.getName();
+                    P.cc = l.getCountryCode();
+                    P.la = "" + l.getLatitude();
+                    P.lo = "" + l.getLongitude();
+                    P.tz = l.getTzid();
+                    P.il = l.getIsrael();
+                    P.q = "";
+                    render();
+                  }
+                },
+                cityLabel(l)
+              );
+            })
+        );
+      }
+      find();
+      var zones = Intl.supportedValuesOf ? Intl.supportedValuesOf("timeZone") : [];
+      add(box, [
+        P.n ? h("span", { cls: "v" }, P.n) : null,
+        h("input", {
+          id: "lq",
+          type: "search",
+          placeholder: L.locSearch,
+          "aria-label": L.locSearch,
+          value: P.q,
+          oninput: function (e) {
+            P.q = e.target.value;
+            find();
+          }
+        }),
+        hits,
+        h("span", { cls: "s" }, L.locOr),
+        h(
+          "div",
+          { cls: "line" },
+          field("la", L.locLat, { inputmode: "decimal" }),
+          field("lo", L.locLon, { inputmode: "decimal" })
+        ),
+        field("tz", L.locTz, { list: "ltzs", autocomplete: "off" }),
+        h(
+          "datalist",
+          { id: "ltzs" },
+          zones.map(function (z) {
+            return h("option", { value: z });
+          })
+        ),
+        h(
+          "div",
+          { cls: "row" },
+          h("div", { cls: "col0" }, h("b", null, L.locIl)),
+          sw(P.il, L.locIl, function () {
+            P.il = !P.il;
+            render();
+          })
+        ),
+        h(
+          "div",
+          { cls: "line" },
+          h("button", { cls: "btn pri", onclick: locSave }, L.locSave),
+          cancel
+        )
+      ]);
+      return box;
+    }
+
     // ---------- software update: only when the user presses "Check for updates" ----------
     // The latest release is read from the repository's `library` branch (written only by the
     // release workflow, from a tested build; the Shelly script library installs from the same
@@ -1579,11 +1943,11 @@ if (typeof document !== "undefined")
     // Upload in 1 KB pieces, like tools/deploy.py. A lost reply may or may not have applied its
     // piece, so an append is never re-sent blindly: the upload resumes from the length the
     // device reports. Then the code is read back and compared.
-    function putCode(id, code, label) {
+    function putCode(id, code, label, prog) {
       var i = 0,
         fails = 0;
       function next() {
-        S.upd.msg = tr(label, Math.round((i * 100) / code.length));
+        (prog || S.upd).msg = tr(label, Math.round((i * 100) / code.length));
         render();
         if (i >= code.length)
           return readCode(id).then(function (c) {
@@ -1767,33 +2131,14 @@ if (typeof document !== "undefined")
     }
     function loadTable() {
       if (S.tbl || S.tblLoading) return;
+      if (S.did < 0) {
+        S.tbl = [];
+        return;
+      }
       S.tblLoading = true;
-      readCode(ID)
+      readCode(S.did)
         .then(function (code) {
-          var b = code.match(/TBL_BASE\s*=\s*(\d+)/),
-            t = code.match(/TBL_T\s*=\s*(\[[^\]]*\])/),
-            d = code.match(/TBL\s*=\s*"([A-Za-z0-9+\-]*)"/);
-          if (!b || !t || !d) throw new Error("table not found in controller code");
-          var base = +b[1],
-            titles = JSON.parse(t[1]),
-            data = d[1],
-            out = [];
-          function dec(p, w) {
-            var n = 0;
-            for (var i = 0; i < w; i++) n = n * 64 + A64.indexOf(data.charAt(p + i));
-            return n;
-          }
-          for (var p = 0; p + 8 <= data.length; p += 8) {
-            var st = base + dec(p, 4) * 60,
-              ti = titles[A64.indexOf(data.charAt(p + 7))];
-            out.push({
-              s: st,
-              e: st + dec(p + 4, 3) * 60,
-              t: ti,
-              k: ti === "Shabbat" ? 1 : ti.indexOf("Shabbat") >= 0 ? 3 : 2
-            });
-          }
-          S.tbl = out;
+          S.tbl = sdParse(code).w;
           S.tblLoading = false;
           render();
         })
@@ -1814,6 +2159,7 @@ if (typeof document !== "undefined")
         return h("div", { cls: "card" }, L.loading);
       }
       var now = (S.st && S.st.now) || Date.now() / 1000;
+      if (!S.tbl.length) return h("div", { cls: "warn" }, L.locNone);
       var rows = S.tbl.filter(function (w) {
         return (S.tblPast || w.e > now) && (!S.tblHol || w.k !== 1);
       });
@@ -2066,9 +2412,20 @@ if (typeof document !== "undefined")
             ? h("div", { cls: "bar ok", role: "status" }, S.flash)
             : null
       );
-      var y = window.scrollY;
+      var y = window.scrollY,
+        f = document.activeElement,
+        fid = f && f.id,
+        sel = fid && f.selectionStart;
       root.replaceChildren(app);
       window.scrollTo(0, y);
+      // keep the field being typed in (the page re-renders every 15 s)
+      f = fid && document.getElementById(fid);
+      if (f && f.focus) {
+        f.focus();
+        try {
+          f.setSelectionRange(sel, sel);
+        } catch (e) {}
+      }
     }
 
     // Readable here; tools/build.mjs squeezes the whitespace out of this template.

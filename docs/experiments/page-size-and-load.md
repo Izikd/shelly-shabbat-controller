@@ -102,6 +102,15 @@ per round trip). Entries are dated, newest last; keep the method so a test can b
   the controller grew by ~380 bytes (script memory); page 23,826 bytes. Not yet checked on
   hardware.
 
+## 2026-11-07 - Locations (hebcal in the browser): the page grows to 28 KB, 7 pieces
+- **Measured** (local builds only, not on hardware): the location card, loading hebcal from
+  the CDN, the table code (`src/tablegen.js`) and its texts took the stored page from 23,816
+  to 28,326 bytes (minified page 42,816 -> 51,689 bytes). The controller shrank from 18,323
+  to 16,976 bytes (no table in its code).
+- **Decision** (owner): the page budget is 28,672 bytes (7 x 4 KB); the loader asks for 7
+  pieces, still 2 at a time.
+- **Not checked yet on hardware**: the load time with the 7th piece.
+
 ## Ideas not tried yet
 - Inline the first status into the HTML (saves one round trip; costs controller work per
   request).

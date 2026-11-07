@@ -1,8 +1,27 @@
 // SPDX-License-Identifier: MIT
-// HTML of the public pages (no script: plain server-rendered HTML, Israel time).
+// HTML of the public pages (no script: plain server-rendered HTML, in the device's time zone:
+// the schedule's tz, Israel for devices that do not send one).
 import qrcode from "qrcode-generator";
 
 const TZ = "Asia/Jerusalem";
+// formatters of the page being rendered (renderPage sets them for the schedule's time zone)
+let DF, HDF;
+function useTz(tz) {
+  DF = new Intl.DateTimeFormat("en-GB", {
+    timeZone: tz,
+    weekday: "short",
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23"
+  });
+  HDF = {
+    he: new Intl.DateTimeFormat("he-u-ca-hebrew", { timeZone: tz, day: "numeric", month: "long" }),
+    en: new Intl.DateTimeFormat("en-u-ca-hebrew", { timeZone: tz, day: "numeric", month: "long" })
+  };
+}
+useTz(TZ);
 const STALE = 2 * 86400 + 4 * 3600; // the device sends daily; warn after two days without
 
 const T = {
@@ -85,15 +104,6 @@ export function esc(s) {
   );
 }
 
-const DF = new Intl.DateTimeFormat("en-GB", {
-  timeZone: TZ,
-  weekday: "short",
-  day: "2-digit",
-  month: "2-digit",
-  hour: "2-digit",
-  minute: "2-digit",
-  hourCycle: "h23"
-});
 function parts(t) {
   const o = {};
   for (const p of DF.formatToParts(new Date(t * 1000))) o[p.type] = p.value;
@@ -109,10 +119,6 @@ function day(t, L) {
 }
 const full = (t, L) => day(t, L) + " " + hm(t);
 
-const HDF = {
-  he: new Intl.DateTimeFormat("he-u-ca-hebrew", { timeZone: TZ, day: "numeric", month: "long" }),
-  en: new Intl.DateTimeFormat("en-u-ca-hebrew", { timeZone: TZ, day: "numeric", month: "long" })
-};
 function gem(n) {
   if (n === 15) return "ט״ו";
   if (n === 16) return "ט״ז";
@@ -197,6 +203,7 @@ function windowCard(w, now, L, lang) {
 // {lang, now, name, updated, data, link}
 export function renderPage(o) {
   const L = T[o.lang];
+  useTz((o.data && o.data.tz) || TZ);
   const name = o.name || L.defTitle;
   const wins = o.data ? o.data.w.filter((w) => w.e > o.now) : [];
   const next = wins[0];

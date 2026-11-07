@@ -111,6 +111,16 @@ export function validSchedule(d) {
     }
     w.push({ t: x.t, k: x.k, s: x.s, e: x.e, x: x.x, on });
   }
+  // the device's time zone (optional: devices from before locations send none, Israel)
+  if (d.tz !== undefined) {
+    if (typeof d.tz !== "string" || !/^[A-Za-z][A-Za-z0-9_+\-\/]{0,63}$/.test(d.tz)) return "tz";
+    try {
+      new Intl.DateTimeFormat("en", { timeZone: d.tz });
+    } catch (e) {
+      return "tz";
+    }
+    return { v: 1, now: d.now, auto: d.auto, tz: d.tz, w };
+  }
   return { v: 1, now: d.now, auto: d.auto, w };
 }
 

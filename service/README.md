@@ -14,7 +14,8 @@ A Cloudflare Worker (`src/index.js`, pages in `src/page.js`) with a D1 database
    every settings change and after a restart; failures retry after 5, 20, 45... min (max 6 h).
    The reply is 204 with no body, so it costs the script almost no memory.
 3. Anyone with the link opens `GET /s/<id>`: plain HTML, no script, Hebrew or English
-   (browser language, or `?lang=he|en`), Israel time, refreshes itself every 15 minutes.
+   (browser language, or `?lang=he|en`), in the device's time zone (the `tz` it sends;
+   Israel if none), refreshes itself every 15 minutes.
    Also `GET /s/<id>.json` and `GET /s/<id>/qr.svg`.
 4. Rename: `PUT /api/s/<id>/name {name}`; stop: `DELETE /api/s/<id>` (both with the key,
    from the settings page).

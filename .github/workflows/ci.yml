@@ -38,13 +38,15 @@ jobs:
           path: "*.png"
           if-no-files-found: ignore
 
-  table:
-    name: Table matches hdate
+  reference:
+    name: Reference tables match hebcal
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v6
-      - name: Regenerate src/table.js and test/windows.json
-        run: uv run tools/gen_table.py
-      - name: Fail if they changed
-        run: git diff --exit-code -- src/table.js test/windows.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Regenerate test/dates and test/windows.json, fail if they changed
+        run: npm run check:ref

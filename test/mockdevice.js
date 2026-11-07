@@ -2,8 +2,10 @@
 // Fake Shelly for UI testing: runs dist/shabbat_controller.js in a VM with mocked
 // script APIs and serves the endpoints the browser uses:
 //   GET  /script/1/ui            loader page (from the script's HTTPServer endpoint)
-//   GET  /rpc/Script.List        -> script 1 + "shabbat_ui" (id 2)
-//   GET  /rpc/Script.GetCode     -> dist/shabbat_ui.js in 2000-byte chunks
+//   GET  /rpc/Script.List        -> script 1 + "shabbat_ui" (id 2) + "shabbat_dates" (id 3,
+//                                   test/dates/pt.txt; MOCK_DATES=none starts without it)
+//   GET  /rpc/Script.GetCode     -> byte ranges of a script's code (also from the script)
+//   POST /rpc/Script.Create      -> a new stopped script, like the device
 //   POST /rpc/Script.Shabbat*    -> the script's RPC handlers
 //   Script.PutCode / Stop / Start / GetStatus, like the device: a running script's code cannot
 //   be replaced, and Start runs the uploaded code in a fresh VM (KVS kept)
@@ -45,6 +47,34 @@ const scripts = {
   1: { name: "shabbat_controller", code: Buffer.from(CODE, "utf8"), running: true, enable: true },
   2: { name: "shabbat_ui", code: Buffer.from(UI, "utf8"), running: false, enable: false }
 };
+if (process.env.MOCK_DATES !== "none")
+  scripts[3] = {
+    name: "shabbat_dates",
+    code: fs.readFileSync(path.join(ROOT, "test/dates", (process.env.MOCK_DATES || "pt") + ".txt")),
+    running: false,
+    enable: false
+  };
+const scriptList = () =>
+  Object.keys(scripts).map((id) => ({
+    id: +id,
+    name: scripts[id].name,
+    enable: scripts[id].enable,
+    running: scripts[id].running
+  }));
+// Script.GetCode as on the device: byte ranges; a UTF-8 character split across ranges comes
+// back as U+FFFD; large reads rebooted a real Pro 1, so a read without a small len is refused
+function getCode(params) {
+  const sc = scripts[params.id];
+  if (!sc) return { err: -105, message: "Argument 'id', value " + params.id + " not found!" };
+  const len = +params.len;
+  if (!len || len > 8192) return { err: -103, message: "read too large" };
+  const src = sc.code,
+    off = +params.offset || 0,
+    end = Math.min(src.length, off + len);
+  if (off > src.length)
+    return { err: -103, message: "Invalid argument 'offset': Exceeds file size!" };
+  return { res: { data: src.subarray(off, end).toString("utf8"), left: src.length - end } };
+}
 const flush = () => {
   let n = 0;
   while (dev.pending.length && n++ < 5000) dev.pending.shift()();
@@ -79,14 +109,12 @@ const makeSandbox = () => ({
           )
           .then(flush);
         return;
-      } else if (m === "Script.List")
-        res = {
-          scripts: [
-            { id: 1, name: "shabbat_controller" },
-            { id: 2, name: "shabbat_ui" }
-          ]
-        };
-      else if (m === "Switch.Set") {
+      } else if (m === "Script.List") res = { scripts: scriptList() };
+      else if (m === "Script.GetCode") {
+        const r = getCode(p);
+        res = r.res || null;
+        err = r.err || 0;
+      } else if (m === "Switch.Set") {
         dev.relay = p.on;
         dev.src = "loopback";
         dev.tag = p.tag;
@@ -283,15 +311,17 @@ function serve(req, res, u) {
         dev.kvs[params.key] = String(params.value);
         return json(res, 200, {});
       }
-      if (u.pathname === "/rpc/Script.List")
-        return json(res, 200, {
-          scripts: Object.keys(scripts).map((id) => ({
-            id: +id,
-            name: scripts[id].name,
-            enable: scripts[id].enable,
-            running: scripts[id].running
-          }))
-        });
+      if (u.pathname === "/rpc/Script.List") return json(res, 200, { scripts: scriptList() });
+      if (u.pathname === "/rpc/Script.Create") {
+        const id = Math.max(...Object.keys(scripts).map(Number)) + 1;
+        scripts[id] = {
+          name: params.name || "script_" + id,
+          code: Buffer.alloc(0),
+          running: false,
+          enable: false
+        };
+        return json(res, 200, { id });
+      }
       const sc = scripts[params.id];
       if (/^\/rpc\/Script\.(GetCode|PutCode|Stop|Start)$/.test(u.pathname) && !sc)
         return json(res, 500, {
@@ -322,20 +352,13 @@ function serve(req, res, u) {
         return json(res, 200, { was_running: false });
       }
       if (u.pathname === "/rpc/Script.GetCode") {
-        const src = sc.code;
-        // like the device: byte ranges, a UTF-8 character split across ranges comes back as
-        // U+FFFD. Large reads rebooted a real Pro 1, so refuse any read without a small len.
-        const len = +params.len;
-        if (!len || len > 8192) return json(res, 400, { code: -103, message: "read too large" });
-        let off = +params.offset || 0,
-          end = Math.min(src.length, off + len);
-        if (off > src.length)
-          return json(res, 200, {
-            code: -103,
-            message: "Invalid argument 'offset': Exceeds file size!"
-          });
-        const chunk = src.subarray(off, end);
-        return json(res, 200, { data: chunk.toString("utf8"), left: src.length - end });
+        const r = getCode(params);
+        if (r.res) return json(res, 200, r.res);
+        // what the device answers: HTTP 400 for a bad len, 200 with an error past the end
+        return json(res, r.err === -103 && /large/.test(r.message) ? 400 : 200, {
+          code: r.err,
+          message: r.message
+        });
       }
       const m = u.pathname.match(/^\/rpc\/Script\.(Shabbat\w+)$/);
       if (m && scripts[1].running && dev.rpc[m[1]]) {

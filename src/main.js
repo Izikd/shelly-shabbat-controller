@@ -3,7 +3,10 @@
 // Shabbat controller for Shelly (Gen2+ with a relay, firmware 2.0+; developed on a Pro 1)
 //
 // Turns switch:0 on during configured timers inside Shabbat & Yom Tov windows
-// (Shabbat + Yom Tov). Windows come from the embedded table (no internet).
+// (Shabbat + Yom Tov). Windows come from the never-started script "shabbat_dates", which the
+// settings page computes with hebcal for the chosen place and writes (src/tablegen.js). The
+// controller reads it at boot and on ShabbatSet {reload}; it needs no internet. Without it
+// there are no windows and the relay stays off.
 //
 // Settings UI:  http://<ip>/script/<this id>/ui
 //   The page is a tiny loader; the UI code itself is stored as the code of a
@@ -12,7 +15,8 @@
 //
 // RPC API (Script.<name>, routed by "id" = this script's id):
 //   ShabbatGet                 -> {cfg, st}
-//   ShabbatSet {timers?, auto?, skip?, test?}  -> {cfg, st}   (validated, saved)
+//   ShabbatSet {timers?, auto?, skip?, test?, reload?}  -> {cfg, st}   (validated, saved;
+//     reload: read shabbat_dates again, answered once it is read)
 //   ShabbatPreview {timers?, n?} -> {w: [{t, k, s, e, skip, on: [[s, e, "1+3"]]}]}
 //   ShabbatPub {u?, i?, k?, off?, send?} -> {on, u, i, k, ok, err, due, busy}
 //     publishing to the schedule service (service/): set it up / stop / send now / state
@@ -51,11 +55,22 @@ let DEFAULT_TIMERS = [
   [2, -40, 40, 0, 0, 1]
 ];
 
-//@@TABLE@@
+// ---------------- Window table (from the shabbat_dates script) ----------------
+// Window: 8 characters - start in minutes since TBL_BASE (4 base-64 digits), length in minutes
+// (3), title index (1); see src/tablegen.js. Empty until read: no windows, relay off.
+let TBL_BASE = 1735689600; // 2025-01-01 UTC; also the base of the event log's times
+let TBL = "";
+let TBL_T = [];
+let TBL_N = 0;
+let TBL_STD = 7200; // standard UTC offset of the place (s)
+let TBL_DST = []; // DST periods [start, end, ...] (UTC s)
+let TBL_TO = 0; // end of the DST data; outside it the device's utc_offset is used
+let TBL_TZ = ""; // time zone name, for the page
+let TBL_NAME = ""; // place name, for the page
+let datesId = -1; // id of the shabbat_dates script
 
 // ---------------- Globals ----------------
 let ALPHA = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+-";
-let TBL_N = TBL.length / 8;
 
 let cfg = null; // {t: timers, a: auto 0/1, s: skipped window start (0 = none)}
 let testTime = 0; // test clock (UTC s), RAM only
@@ -78,11 +93,11 @@ function dbg(a, b) {
 // ---------------- Local time ----------------
 // Kept flat on purpose: the Shelly JS engine has a small stack, and every
 // nested call / nested parenthesis costs stack.
-// DST periods come from the generated table (TBL_DST = [start, end, ...] in
-// UTC seconds, from the tz database). Outside the table: device utc_offset.
+// DST periods come from the table (TBL_DST = [start, end, ...] in UTC seconds, from the
+// browser's time zone data). Outside the table: device utc_offset.
 let sysOffset = 7200;
 function tzOffset(t) {
-  if (t < TBL_BASE || t >= TBL_DST[TBL_DST.length - 1] + 86400 * 150) return sysOffset;
+  if (t < TBL_BASE || t >= TBL_TO) return sysOffset;
   for (let i = 0; i < TBL_DST.length; i += 2) {
     if (t >= TBL_DST[i] && t < TBL_DST[i + 1]) return TBL_STD + 3600;
   }
@@ -92,7 +107,7 @@ function tzOffset(t) {
 // local wall-clock seconds -> UTC seconds (inlined offset lookup: no nested calls)
 function localToUtc(localSecs) {
   let u = localSecs - TBL_STD;
-  if (u < TBL_BASE || u >= TBL_DST[TBL_DST.length - 1] + 86400 * 150) return localSecs - sysOffset;
+  if (u < TBL_BASE || u >= TBL_TO) return localSecs - sysOffset;
   for (let i = 0; i < TBL_DST.length; i += 2) {
     if (u - 3600 >= TBL_DST[i] && u - 3600 < TBL_DST[i + 1]) return u - 3600;
   }
@@ -360,7 +375,9 @@ function tick() {
     cur: null,
     next: null,
     nextOn: null,
-    end: getWin(TBL_N - 1).e
+    end: TBL_N ? getWin(TBL_N - 1).e : 0,
+    loc: TBL_NAME,
+    tz: TBL_TZ
   };
 
   if (!t) {
@@ -424,7 +441,8 @@ function snapshot() {
     cfg: { timers: cfg.t, auto: cfg.a !== 0, skip: cfg.s },
     st: status,
     log: lg,
-    base: TBL_BASE
+    base: TBL_BASE,
+    did: datesId
   };
 }
 
@@ -480,6 +498,12 @@ function doSet(req, params) {
     }
     saveCfg();
     pubSoon(30);
+  }
+  if (params.reload) {
+    // answered once the table is read (datesDone)
+    datesReq.push(req);
+    if (!datesBusy) datesLoad();
+    return;
   }
   replyQ.push(req);
   kickTick();
@@ -606,11 +630,14 @@ function pubCheck() {
 }
 
 // The schedule, as the service expects it (see service/src/index.js):
-// {v: 1, now, auto, w: [{t, k, s, e, x: skipped 0/1, on: [[s, e], ...]}]}
+// {v: 1, now, auto, tz, w: [{t, k, s, e, x: skipped 0/1, on: [[s, e], ...]}]} (tz: the place's
+// time zone, for the page's times; left out with no table)
 // Assembled as a string, without building the objects first (script memory).
 function pubBody(t) {
   let idx = findWin(t);
-  let out = '{"v":1,"now":' + t + ',"auto":' + (cfg.a !== 0 ? 1 : 0) + ',"w":[';
+  let out = '{"v":1,"now":' + t + ',"auto":' + (cfg.a !== 0 ? 1 : 0);
+  if (okStr(TBL_TZ, 1, 64)) out += ',"tz":"' + TBL_TZ + '"';
+  out += ',"w":[';
   for (let n = 0; n < CFG.pubN; n++) {
     let win = getWin(idx + n);
     if (!win) break;
@@ -721,7 +748,7 @@ let UI_A =
 // Page = UI_A + <this script id> + ";window.SE_UI=" + <shabbat_ui id, -1 if unknown> + UI_B,
 // assembled per request: keeping the assembled copy too cost ~1.4 KB of script memory.
 // The loader starts the status request (window.SE_FIRST, used by the page's first refresh)
-// first, then asks for the first 6 pieces (24 KB, the whole page) and any rest; reads past
+// first, then asks for the first 7 pieces (28 KB, the whole page) and any rest; reads past
 // the end return no data. With no known id, or code that is not shabbat_ui, it looks the
 // id up.
 // The device accepts only a few connections at a time, shared by every open page, app and
@@ -739,7 +766,7 @@ let UI_B =
   "A--;N()});N()})};" +
   'window.SE_FIRST=J("/rpc/Script.ShabbatGet",{method:"POST",body:JSON.stringify({id:id})});' +
   'let g=function(u,o){return J("/rpc/Script.GetCode?id="+u+"&len=4096&offset="+o)};' +
-  "let R=async function(u){let p=[];for(let i=0;i<6;i++)p.push(g(u,i*4096));let r=await Promise.all(p);" +
+  "let R=async function(u){let p=[];for(let i=0;i<7;i++)p.push(g(u,i*4096));let r=await Promise.all(p);" +
   'if(!r[0].data||r[0].data.indexOf("// shabbat_ui")!==0)return null;' +
   'let n=r[0].data.length+r[0].left,c="";for(let x of r)c+=x.data||"";' +
   "let o=c.length;while(o<n){let b=[];for(let i=0;i<4&&o<n;i++,o+=4096)b.push(g(u,o));for(let x of await Promise.all(b))c+=x.data;}" +
@@ -751,14 +778,7 @@ let UI_B =
   '" - if other pages of this device are open, close them and reload";}})();' +
   "</script></body></html>";
 let uiId = -1;
-// looked up once at boot; the loader falls back to Script.List if it is wrong
-function onUiList(res, err) {
-  if (!err && res && res.scripts) {
-    for (let i = 0; i < res.scripts.length; i++) {
-      if (res.scripts[i].name.indexOf("shabbat_ui") === 0) uiId = res.scripts[i].id;
-    }
-  }
-}
+// looked up at boot (with shabbat_dates); the loader falls back to Script.List if it is wrong
 
 function onUi(req, res) {
   res.code = 200;
@@ -793,7 +813,6 @@ let BOOT = [
     }
   },
   function () {
-    Shelly.call("Script.List", {}, onUiList);
     HTTPServer.registerEndpoint("ui", onUi);
     Script.addRpcHandler("ShabbatGet", onRpcGet);
     Script.addRpcHandler("ShabbatSet", onRpcSet);
@@ -803,11 +822,7 @@ let BOOT = [
   tick,
   function () {
     Timer.set(CFG.tickMs, true, tick);
-    console.log(
-      "Shabbat controller started. Windows:",
-      TBL_N,
-      "UI: /script/" + Shelly.getCurrentScriptId() + "/ui"
-    );
+    console.log("Shabbat controller started. UI: /script/" + Shelly.getCurrentScriptId() + "/ui");
   }
 ];
 
@@ -850,7 +865,112 @@ function onPubLoaded(res, err) {
       console.log("Bad publishing settings, ignored");
     }
   }
-  Timer.set(50, false, bootNext);
+  datesLoad();
+}
+
+// ---------------- The table: read the shabbat_dates script ----------------
+// At boot and on ShabbatSet {reload}: Script.List finds it (and shabbat_ui), then its code is
+// read with Script.GetCode in 4 KB pieces (a 5-year table is ~3.4 KB: one read) and parsed.
+// Only the parts are kept, not the whole code.
+let datesBusy = false;
+let datesBooted = false;
+let datesReq = []; // ShabbatSet {reload} requests waiting for the read
+let datesCode = "";
+
+function datesLoad() {
+  datesBusy = true;
+  datesCode = "";
+  Shelly.call("Script.List", {}, onDatesList);
+}
+
+function onDatesList(res, err) {
+  datesId = -1;
+  if (!err && res && res.scripts) {
+    for (let i = 0; i < res.scripts.length; i++) {
+      let n = res.scripts[i].name;
+      if (n.indexOf("shabbat_ui") === 0) uiId = res.scripts[i].id;
+      if (n.indexOf("shabbat_dates") === 0) datesId = res.scripts[i].id;
+    }
+  }
+  if (datesId < 0) {
+    datesParse();
+    return;
+  }
+  Shelly.call("Script.GetCode", { id: datesId, offset: 0, len: 4096 }, onDatesCode);
+}
+
+function onDatesCode(res, err) {
+  if (err || !res || typeof res.data !== "string") {
+    console.log("Cannot read shabbat_dates:", err);
+    datesCode = "";
+    datesParse();
+    return;
+  }
+  datesCode += res.data;
+  if (res.left > 0 && datesCode.length < 16384) {
+    let p = { id: datesId, offset: datesCode.length, len: 4096 };
+    Shelly.call("Script.GetCode", p, onDatesCode);
+    return;
+  }
+  datesParse();
+}
+
+// one tagged line ("//W ...") of the code, "" if missing. The newline is taken from the code
+// itself (the character before the first tag): no escapes in strings, see docs/device/engine.md
+let datesNl = "";
+function datesField(tag) {
+  let a = datesCode.indexOf(datesNl + "//" + tag + " ");
+  if (a < 0) return "";
+  let b = datesCode.indexOf(datesNl, a + 5);
+  if (b < 0) b = datesCode.length;
+  return datesCode.slice(a + 5, b);
+}
+
+function datesParse() {
+  TBL = "";
+  TBL_N = 0;
+  TBL_NAME = "";
+  TBL_TZ = "";
+  let ok = datesCode.indexOf("// shabbat_dates v1") === 0;
+  datesNl = datesCode.charAt(datesCode.indexOf("//N ") - 1);
+  try {
+    if (ok) {
+      let s = JSON.parse("[" + datesField("S") + "]");
+      let d = JSON.parse("[" + datesField("D") + "]");
+      let w = datesField("W");
+      ok = s.length === 2 && d.length % 2 === 0 && w.length > 0 && w.length % 8 === 0;
+      if (ok) {
+        TBL_STD = s[0];
+        TBL_TO = s[1];
+        TBL_DST = d;
+        TBL_T = datesField("T").split("|");
+        TBL_TZ = datesField("Z");
+        TBL_NAME = datesField("N");
+        TBL = w;
+        TBL_N = w.length / 8;
+      }
+    }
+  } catch (e) {
+    ok = false;
+  }
+  if (datesId >= 0 && !ok) console.log("shabbat_dates is not a valid table");
+  datesCode = "";
+  datesBusy = false;
+  lastWindowIdx = -2;
+  console.log("Windows:", TBL_N, TBL_NAME);
+  Timer.set(50, false, datesDone);
+}
+
+function datesDone() {
+  if (!datesBooted) {
+    datesBooted = true;
+    bootNext();
+    return;
+  }
+  for (let i = 0; i < datesReq.length; i++) replyQ.push(datesReq[i]);
+  datesReq = [];
+  pubSoon(30);
+  kickTick();
 }
 
 // ---------------- Cleanup: remove virtual components of the old version ----------------
