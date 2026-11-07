@@ -157,8 +157,9 @@ Each has a reason in `docs/device/` and `docs/experiments/`.
 - **`shabbat_ui` never runs on the device**; it only stores the page code. deploy.py keeps it
   stopped and disabled. **`shabbat_dates` never runs either**: it stores the windows the page
   computed (comment lines only, so starting it does nothing). Updates and deploy.py leave it
-  alone. Its format starts with `// shabbat_dates v1`; the controller reads it with 4 KB
-  `GetCode` pieces and keeps only the parsed parts. A change to the format needs a new
+  alone. Its format starts with `// shabbat_dates v1`; the controller reads the header in
+  1 KB `GetCode` pieces, then the windows line alone at its offset (the reply's string is
+  the table): reading it whole ran out of memory (`docs/device/memory.md`). A change to the format needs a new
   version line, and the controller must keep reading the old one.
 - **The relay never depends on the internet**: hebcal runs only in the browser, when the
   location is set. Without `shabbat_dates` there are no windows and the relay stays off.

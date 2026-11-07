@@ -49,6 +49,25 @@ of the first entry (tools/gen_table.py) and its table (src/table.js) were remove
 - **Sizes** (`tools/gen_ref.mjs`, 2025-2030): Petah Tikva 336 windows, 3,363 bytes; New York
   331 windows, 3,324 bytes; Sydney 331, 3,342 bytes - one 4 KB `GetCode` read each. The 5
   years the page writes are ~2.9 KB.
-- **Not checked yet on hardware**: the controller reading the table with `Script.GetCode`
-  through `Shelly.call` (its memory peak, and that the call is allowed from a script), and
-  `Script.Create` from the page.
+- **On hardware**: see the next entry.
+
+## 2026-11-07 - The location table on the Pro 1: memory and reload
+- **Question**: can the controller read `shabbat_dates` itself (`Script.GetCode` through
+  `Shelly.call`), within its memory, at boot and on reload while running?
+- **Method**: Pro 1, fw 2.0.3, through the tunnel, during a Shabbat window (test device).
+  Installed the build with `tools/deploy.py`; created `shabbat_dates` with `Script.Create`
+  and wrote 5 years for Petah Tikva (2,915 bytes, computed with `src/tablegen.js` as the page
+  does); `ShabbatSet {reload}` five times; `Script.GetStatus` after each step; test time
+  16:50 on the havdalah timer, then cleared.
+- **Result** (`mem_used` / `mem_peak`, bytes; pool 25,200):
+| Build | No table | Table read at boot | `reload` while running |
+|---|---|---|---|
+| v0.3.0-beta.1 (table in the code) | 16,198 / 22,792 | - | - |
+| read whole (a1063dc) | 12,180 / 15,064 | 16,604 / 24,640 | out of memory, script stopped |
+| header, then the windows line alone | - | 16,870 / 20,230 | 16,982 / 20,230 (5 times, ~3 s each) |
+  `GetCode` works from the script. Current and next window, the havdalah timer and the relay
+  (test time) were right. An 8-window `ShabbatPreview` raised the peak to 23,618, as forecasts
+  did before.
+- **Decision**: read the header in 1 KB pieces, then the windows line at its offset so the
+  reply's string is the table; drop the old table before a reload and skip ticks meanwhile
+  (the relay is left as it is for the ~1 s read). `test/sim.js` checks the read sizes.

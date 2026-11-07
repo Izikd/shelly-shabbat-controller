@@ -19,7 +19,7 @@ Any Shelly that meets all of these should work; only the Pro 1 has been tested o
 | Gen2 or newer (Plus, Pro, Gen3, Gen4) with scripting | the controller is a Shelly script. Gen1 devices have no scripting |
 | **Firmware 2.0.0 or newer** | the settings page and API use `Script.addRpcHandler`, added in 2.0.0 |
 | A relay output (`Switch` component) as `switch:0` | the controller switches `switch:0` only. Two-channel devices must be in switch mode, not cover mode. Dimmers / RGBW (`Light` component) are not supported |
-| 3 free script slots, about 25 KB of free script memory | one running script (peak ~17-21 KB on the Pro 1) plus `shabbat_ui` and `shabbat_dates` (the times, created by the settings page), which are stored but never started. Script memory is shared, so other running scripts count too |
+| 3 free script slots, about 25 KB of free script memory | one running script (peak ~20-24 KB on the Pro 1) plus `shabbat_ui` and `shabbat_dates` (the times, created by the settings page), which are stored but never started. Script memory is shared, so other running scripts count too |
 | Clock sync (SNTP) after every power-up | the device needs the time to know where it is in the table; until it is synced the relay stays off |
 
 Devices that fit (from the Shelly API docs; untested unless marked):

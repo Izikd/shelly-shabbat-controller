@@ -47,6 +47,7 @@ function makeDevice(opts) {
   const dev = {
     scripts,
     getCodes: 0,
+    getLens: [], // len of each Script.GetCode
     now: opts.now === undefined ? 1762525200 : opts.now,
     relay: false,
     relaySets: 0,
@@ -122,6 +123,7 @@ function makeDevice(opts) {
         } else if (method === "Script.GetCode") {
           // like the device: byte ranges, small reads only, an error past the end
           dev.getCodes++;
+          dev.getLens.push(params.len);
           const sc = dev.scripts.find((x) => x.id === params.id);
           const off = params.offset || 0;
           if (!sc || !sc.code) err = -105;
@@ -380,7 +382,9 @@ for (const place of Object.keys(REF)) {
     if (w.s !== ranges[i][0] || w.e !== ranges[i][1] || w.k !== ranges[i][3]) bad++;
   }
   check(bad === 0, place + ": window mismatches " + bad);
-  check(d.getCodes === 1, place + ": table read in one 4 KB piece: " + d.getCodes);
+  check(d.getCodes === 2, place + ": header + windows, one read each: " + d.getCodes);
+  const reads = d.getLens.slice(0, 2).join(",");
+  check(/^1024,2\d{3}$/.test(reads), place + ": read sizes " + reads);
   let badT = 0;
   for (let t = 1735689600; t < 1924992000; t += 3 * 3600 + 17) {
     const p = localParts(t);
@@ -433,12 +437,30 @@ useRef("pt");
   d.scripts[2].code = Buffer.from("console.log(1)");
   d.call("ShabbatSet", { reload: true });
   check(vm.runInContext("TBL_N", d.sb) === 0, "not a table -> no windows");
-  // a table longer than one read
-  const big = DATES.pt.replace("//W ", "//X " + "a".repeat(5000) + "\n//W ");
+  // a header longer than one read, windows longer than one read
+  const w = DATES.pt.match(/\n\/\/W (\S+)/)[1];
+  const big = DATES.pt.replace("//W ", "//X " + "a".repeat(1500) + "\n//W ").replace(w, w + w);
   d.scripts[2].code = Buffer.from(big);
   d.getCodes = 0;
+  d.getLens = [];
   d.call("ShabbatSet", { reload: true });
-  check(vm.runInContext("TBL_N", d.sb) === ranges.length && d.getCodes === 3, "read in pieces");
+  check(
+    vm.runInContext("TBL_N", d.sb) === 2 * ranges.length && d.getCodes === 5,
+    "read in pieces: " + d.getLens.join(",")
+  );
+  // no trailing newline, or windows cut short: not a table
+  d.scripts[2].code = Buffer.from(DATES.pt.trimEnd());
+  d.call("ShabbatSet", { reload: true });
+  check(vm.runInContext("TBL_N", d.sb) === 0, "no trailing newline -> no windows");
+  // the relay is left alone while the table is read (no tick acts meanwhile)
+  d.scripts[2].code = Buffer.from(DATES.pt);
+  d.call("ShabbatSet", { reload: true });
+  check(d.relay === true, "back to the table: ON");
+  const sets = d.relaySets;
+  d.rpc.ShabbatSet({ result() {}, error() {} }, { reload: true });
+  d.timers[0]();
+  check(d.relaySets === sets && d.relay === true, "tick during the read keeps the relay");
+  d.flush();
   console.log("T1b no table / broken table / reload: OK");
 }
 

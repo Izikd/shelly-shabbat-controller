@@ -360,7 +360,7 @@ function winInfo(w) {
 }
 
 function tick() {
-  if (!cfg) return;
+  if (!cfg || datesBusy) return; // reading the table: keep the relay as it is
   pubCheck();
   let t = getNow();
   let auto = cfg.a !== 0;
@@ -869,17 +869,28 @@ function onPubLoaded(res, err) {
 }
 
 // ---------------- The table: read the shabbat_dates script ----------------
-// At boot and on ShabbatSet {reload}: Script.List finds it (and shabbat_ui), then its code is
-// read with Script.GetCode in 4 KB pieces (a 5-year table is ~3.4 KB: one read) and parsed.
-// Only the parts are kept, not the whole code.
+// At boot and on ShabbatSet {reload}: Script.List finds it (and shabbat_ui). Memory is tight
+// (a whole-file read and parse ran out of memory on a Pro 1, docs/device/memory.md), so:
+// first the header, 1 KB at a time until the "//W " line starts, parsed into small parts;
+// then the windows line alone, from its exact offset, so the reply's data is the table
+// string itself (no copies). The old table is dropped first, and ticks wait meanwhile.
 let datesBusy = false;
 let datesBooted = false;
 let datesReq = []; // ShabbatSet {reload} requests waiting for the read
-let datesCode = "";
+let datesCode = ""; // the header while it is read
+let datesNl = ""; // the newline, taken from the code: no escapes in strings (engine.md)
+let datesSize = 0; // the whole code (bytes)
+let datesW = 0; // offset of the windows line's data
+let datesOk = false;
 
 function datesLoad() {
   datesBusy = true;
+  datesOk = false;
   datesCode = "";
+  TBL = "";
+  TBL_N = 0;
+  TBL_NAME = "";
+  TBL_TZ = "";
   Shelly.call("Script.List", {}, onDatesList);
 }
 
@@ -893,31 +904,13 @@ function onDatesList(res, err) {
     }
   }
   if (datesId < 0) {
-    datesParse();
+    datesEnd();
     return;
   }
-  Shelly.call("Script.GetCode", { id: datesId, offset: 0, len: 4096 }, onDatesCode);
+  Shelly.call("Script.GetCode", { id: datesId, offset: 0, len: 1024 }, onDatesHead);
 }
 
-function onDatesCode(res, err) {
-  if (err || !res || typeof res.data !== "string") {
-    console.log("Cannot read shabbat_dates:", err);
-    datesCode = "";
-    datesParse();
-    return;
-  }
-  datesCode += res.data;
-  if (res.left > 0 && datesCode.length < 16384) {
-    let p = { id: datesId, offset: datesCode.length, len: 4096 };
-    Shelly.call("Script.GetCode", p, onDatesCode);
-    return;
-  }
-  datesParse();
-}
-
-// one tagged line ("//W ...") of the code, "" if missing. The newline is taken from the code
-// itself (the character before the first tag): no escapes in strings, see docs/device/engine.md
-let datesNl = "";
+// one tagged line ("//S ...") of the header, "" if missing
 function datesField(tag) {
   let a = datesCode.indexOf(datesNl + "//" + tag + " ");
   if (a < 0) return "";
@@ -926,34 +919,82 @@ function datesField(tag) {
   return datesCode.slice(a + 5, b);
 }
 
-function datesParse() {
-  TBL = "";
-  TBL_N = 0;
-  TBL_NAME = "";
-  TBL_TZ = "";
-  let ok = datesCode.indexOf("// shabbat_dates v1") === 0;
+function onDatesHead(res, err) {
+  if (err || !res || typeof res.data !== "string") {
+    datesEnd();
+    return;
+  }
+  if (!datesCode.length) datesSize = res.data.length + res.left;
+  datesCode += res.data;
+  if (datesCode.indexOf("// shabbat_dates v1") !== 0) {
+    datesEnd();
+    return;
+  }
   datesNl = datesCode.charAt(datesCode.indexOf("//N ") - 1);
+  let a = datesCode.indexOf(datesNl + "//W ");
+  if (a < 0) {
+    if (res.left > 0 && datesCode.length < 4096) {
+      let p = { id: datesId, offset: datesCode.length, len: 1024 };
+      Shelly.call("Script.GetCode", p, onDatesHead);
+    } else datesEnd();
+    return;
+  }
+  datesW = a + 5;
   try {
-    if (ok) {
-      let s = JSON.parse("[" + datesField("S") + "]");
-      let d = JSON.parse("[" + datesField("D") + "]");
-      let w = datesField("W");
-      ok = s.length === 2 && d.length % 2 === 0 && w.length > 0 && w.length % 8 === 0;
-      if (ok) {
-        TBL_STD = s[0];
-        TBL_TO = s[1];
-        TBL_DST = d;
-        TBL_T = datesField("T").split("|");
-        TBL_TZ = datesField("Z");
-        TBL_NAME = datesField("N");
-        TBL = w;
-        TBL_N = w.length / 8;
-      }
+    let s = JSON.parse("[" + datesField("S") + "]");
+    let d = JSON.parse("[" + datesField("D") + "]");
+    if (s.length === 2 && d.length % 2 === 0) {
+      TBL_STD = s[0];
+      TBL_TO = s[1];
+      TBL_DST = d;
+      TBL_T = datesField("T").split("|");
+      TBL_TZ = datesField("Z");
+      TBL_NAME = datesField("N");
+      datesOk = true;
     }
   } catch (e) {
-    ok = false;
+    datesOk = false;
   }
-  if (datesId >= 0 && !ok) console.log("shabbat_dates is not a valid table");
+  datesCode = "";
+  if (!datesOk) {
+    datesEnd();
+    return;
+  }
+  datesNext();
+}
+
+// the windows line: from datesW to the newline at the end of the code
+function datesNext() {
+  let left = datesSize - 1 - datesW - TBL.length;
+  if (left <= 0) {
+    datesEnd();
+    return;
+  }
+  let p = { id: datesId, offset: datesW + TBL.length, len: left < 4096 ? left : 4096 };
+  Shelly.call("Script.GetCode", p, onDatesW);
+}
+
+function onDatesW(res, err) {
+  if (err || !res || typeof res.data !== "string" || !res.data.length) {
+    datesOk = false;
+    datesEnd();
+    return;
+  }
+  if (TBL.length) TBL += res.data;
+  else TBL = res.data;
+  datesNext();
+}
+
+function datesEnd() {
+  if (datesOk && (TBL.length === 0 || TBL.length % 8 !== 0 || TBL.indexOf(datesNl) >= 0))
+    datesOk = false;
+  if (!datesOk) {
+    TBL = "";
+    TBL_NAME = "";
+    TBL_TZ = "";
+    if (datesId >= 0) console.log("shabbat_dates is not a valid table");
+  }
+  TBL_N = TBL.length / 8;
   datesCode = "";
   datesBusy = false;
   lastWindowIdx = -2;

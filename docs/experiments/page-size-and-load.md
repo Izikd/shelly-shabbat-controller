@@ -109,7 +109,10 @@ per round trip). Entries are dated, newest last; keep the method so a test can b
   to 16,976 bytes (no table in its code).
 - **Decision** (owner): the page budget is 28,672 bytes (7 x 4 KB); the loader asks for 7
   pieces, still 2 at a time.
-- **Not checked yet on hardware**: the load time with the 7th piece.
+- **On hardware** (Pro 1, through the tunnel, 7 cold loads of the 28,322-byte page, time to
+  the first status): 2.28, 2.60, 2.73, 2.75, 3.22, 3.80, 9.02 s - median 2.75 s, 7 code
+  reads. The last measurement with 6 reads was a 2.08 s median, so the 7th piece and the
+  tunnel's noise cost ~0.7 s.
 
 ## Ideas not tried yet
 - Inline the first status into the HTML (saves one round trip; costs controller work per
