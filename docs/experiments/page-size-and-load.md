@@ -146,6 +146,14 @@ per round trip). Entries are dated, newest last; keep the method so a test can b
   the beta choice (`KVS.GetMany`) and `ShabbatPub` are asked when Settings first opens, and
   the publishing status is polled only while Settings is open. Schedule tab: 56 rows for the
   coming year instead of 232.
+- **On hardware** (Pro 1, fw 2.0.3, through the tunnel, 7c3e1ba, page 27,410 bytes; 7 cold
+  loads, time to the first status): 2.22, 2.23, 2.24, 2.27, 3.03, 3.24, 4.27 s - median
+  2.27 s (2.28 s before the regrouping). On load 13 requests in all (17 before); the only
+  RPCs are the 7 code reads and `ShabbatGet`, no `KVS` or `ShabbatPub` until Settings
+  opens. Timers showed the forecast (18 ON times), Schedule 55 rows, Settings and Technical
+  info loaded, and a reload stayed on `#settings`. No page errors. Controller afterwards:
+  `mem_used` 17,136, `mem_peak` 23,884 (after one forecast; the controller code did not
+  change, forecasts have peaked at ~23.2-23.9 KB), no errors.
 
 ## Ideas not tried yet
 - Inline the first status into the HTML (saves one round trip; costs controller work per
