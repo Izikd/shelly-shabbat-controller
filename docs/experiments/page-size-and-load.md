@@ -212,6 +212,26 @@ per round trip). Entries are dated, newest last; keep the method so a test can b
 - **Decision**: keep the 3 + 3 forecast (5 windows still run out of memory with repeats).
   The device is back on main 924aaa0.
 
+## 2026-11-08 - Repeats saved and published (service v 2 deployed)
+- **Question**: with the schedule service deployed (v 1 and v 2), does a saved repeat reach the
+  public page, and what does saving and publishing cost the script?
+- **Method**: Pro 1, fw 2.0.3, build b8f1287 on the device; `npm run service:deploy`; one of
+  the device's timers saved as a repeat (3 min every 20 min for 4 h) with `ShabbatSet`, the
+  publish watched with `ShabbatPub`, the public page read; the controller restarted to reset
+  `mem_peak`, then a send and a save measured; the original timers saved back.
+- **Result**:
+  - saved: `r` in `shabbat_elev_cfg`, the timer itself with enabled 0;
+  - the first send, right after the service deploy, was refused (HTTP 400); the same body,
+    built by the simulator from the same settings, passed the service's validator and the
+    live service took it (204), and the device's next send was taken too (deploy still
+    spreading at the first send, most likely). The public page then showed
+    "16:36-20:19 Fri 13/11 - 3 min every 20 min";
+  - memory after a restart: publish with the repeat peak 21,994-22,120; save with the repeat
+    and its publish 22,722. Once, in the run with the refused send and many status requests,
+    the peak read 24,948; not seen again;
+  - the original timers saved back: no `r` stored, published as v 1 (204).
+- **Decision**: v 2 publishing works; keep watching `mem_peak` after saves on the device.
+
 ## Ideas not tried yet
 - Inline the first status into the HTML (saves one round trip; costs controller work per
   request).
