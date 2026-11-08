@@ -9,6 +9,11 @@ the device) or *design* (a rule we chose). Recheck on new firmware or other mode
 - **Small JS stack.** Deeper call chains or nested expressions crash the script or the
   device. The controller keeps call depth <= 5 (`test/sim.js` measures it) and starts work
   from timer callbacks (*observed* during the first version).
+- **Call depth alone does not measure the stack** (*observed*, 2026-11-08, fw 2.0.3): the
+  first repeating-timers build (138e6a5) stopped with "Uncaught Error: Too much recursion -
+  the stack is about to overflow" in `tickFromTimer > tick > segAt > repScan > localToUtc`,
+  depth 5 like paths that work: `repScan` had ~15 locals and nested `for` / `let` blocks.
+  Big frames count too: keep functions on deep paths small, with few locals.
 - **RPC handlers have even less stack**: they only queue the call; a timer callback does the
   work and answers (*observed*).
 - **No `Array.prototype.sort`** (*observed*); the simulator deletes it to catch use.

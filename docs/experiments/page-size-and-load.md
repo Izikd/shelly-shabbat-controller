@@ -163,6 +163,26 @@ per round trip). Entries are dated, newest last; keep the method so a test can b
   (+2,474: the pulses are worked out on the fly, never listed, so no object per pulse);
   `mem_peak` with repeats is still to be measured on the device.
 
+## 2026-11-08 - Repeating timers on the device: out of memory and stack overflow
+- **Question**: does the repeating-timers build (138e6a5) fit the script's memory and stack?
+- **Method**: Pro 1, fw 2.0.3, through the tunnel, no window near (Sunday morning). Deployed
+  with deploy.py; `Script.GetStatus` after each step. Forecasts (`ShabbatPreview`) with the
+  saved plain timers and with draft timers with 3 repeats (5 timers); then the same timers
+  put into the running script with `Script.Eval` (RAM only: nothing saved, nothing
+  published) and the relay driven with test time.
+- **Result**:
+  - after boot: `mem_used` 17,906, peak 21,266 (main 924aaa0: 16,898 / 20,258);
+  - forecast, plain timers: 1, 2, 4, 6 windows -> peak 21,266, 21,266, 21,910, 23,436;
+  - forecast, draft with repeats: 1-3 windows below 23,436, 4 windows 24,430, 5 windows
+    `out_of_memory` (the script stopped; the first try, 6 windows like the page, too);
+  - relay with repeats (test time 16:36 on a Friday window): the first tick stopped the
+    script with "Too much recursion" in `tick > segAt > repScan > localToUtc`;
+  - each time the script was started again by hand, on the saved plain timers; the relay
+    stayed off.
+- **Decision**: the build is not usable on the device; the device is back on main 924aaa0
+  (peak 20,258 after boot, publishing OK). The repeats need a leaner design before they go
+  further (owner's decision on the plan).
+
 ## Ideas not tried yet
 - Inline the first status into the HTML (saves one round trip; costs controller work per
   request).
