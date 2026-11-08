@@ -183,6 +183,35 @@ per round trip). Entries are dated, newest last; keep the method so a test can b
   (peak 20,258 after boot, publishing OK). The repeats need a leaner design before they go
   further (owner's decision on the plan).
 
+## 2026-11-08 - Repeating timers reworked: fits, and as fast as before
+- **Question**: after the rework (every timer start is a block; the tick walks the blocks
+  with small functions; the forecast merges the plain timers in one pass; the page asks 3
+  windows at a time), does it run on the device, and how fast is the forecast?
+- **Method**: as above (Pro 1, fw 2.0.3, through the tunnel), local builds of the session
+  branch. Three intermediate builds failed and taught the engine notes (a ternary syntax
+  error, a nested condition that rebooted the device, a stack overflow on the publish path;
+  `../device/engine.md`); the device log (`/debug/log`) with `diag: true` showed where. Then:
+  forecasts timed with curl, the relay with repeats (RAM only, test time), a publish with
+  repeats to a closed local port (the real body built, nothing sent), the real page in
+  Chromium (Timers, a repeat switched on, not saved).
+- **Result** (controller 19,855 bytes, page 28,119 of the 28,672 budget; main 924aaa0 for
+  comparison):
+  - after boot: `mem_used` 17,850, peak 21,252 (main 16,898-17,094 / 20,258-20,454);
+  - forecast time, saved plain timers: 1 window ~1.0 s, 3 ~1.5-1.9 s, 6 ~2.2-3.3 s (main:
+    1.0-1.2, 1.5-2.5, 2.2 s); 3 windows with repeats ~2.4 s. Each request includes ~0.7 s
+    of tunnel. Before the one-pass merge the same 3 windows took ~3.5 s (260 calls of the
+    controller's functions instead of 59; main 74, counted in the simulator);
+  - forecast memory with repeats: 3 windows peak 23,926, 4 windows 24,850, 5 `out_of_memory`;
+  - the relay followed the pulses at every test time (on 16:36-16:39, off, 16:51-16:59 where
+    two timers' pulses touch, ...), the next pulse shown between them;
+  - publish with repeats: body built and sent (connection refused as planned), no error,
+    peak 23,436; then the real settings back, sent OK;
+  - page: status 3.1-3.3 s, the forecast 2 x 2 requests of ~1.6-1.7 s (one after the other,
+    so ~3.3 s for 6 windows; main asks once, ~2.2 s), 6 windows each with its repeat line, no
+    page errors; peak 24,164 during the page's use (main ~23,900 after a forecast).
+- **Decision**: keep the 3 + 3 forecast (5 windows still run out of memory with repeats).
+  The device is back on main 924aaa0.
+
 ## Ideas not tried yet
 - Inline the first status into the HTML (saves one round trip; costs controller work per
   request).

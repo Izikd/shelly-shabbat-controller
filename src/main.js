@@ -162,70 +162,11 @@ function findWin(t) {
 }
 
 // ---------------- Timer intervals ----------------
-function pushClipped(list, s, e, w, label) {
-  if (s < w.s) s = w.s;
-  if (e > w.e) e = w.e;
-  if (e <= s) return;
-  // sorted insert by start (Array.sort is not available on Shelly)
-  let i = list.length;
-  list.push(null);
-  while (i > 0 && list[i - 1].s > s) {
-    list[i] = list[i - 1];
-    i--;
-  }
-  list[i] = { s: s, e: e, l: label };
-}
-
-// All ON intervals of window w for timers tl, merged & sorted: [{s,e,l}]
-// (l = 1-based timer numbers, e.g. "1+3"). Repeating timers are stored disabled, so they are
-// not here: their pulses are worked out on the fly (repScan), never listed (script memory).
-function windowPlan(w, tl) {
-  let list = [];
-  let ls = w.s + tzOffset(w.s);
-  let le = w.e + tzOffset(w.e);
-  let d0 = Math.floor(ls / 86400);
-  let d1 = Math.floor(le / 86400);
-  let nDays = d1 - d0;
-  for (let i = 0; i < tl.length; i++) {
-    let v = tl[i];
-    if (!v[5] || v[2] <= 0) continue;
-    if (v[3] === 1 && w.k === 2) continue;
-    if (v[3] === 2 && w.k === 1) continue;
-    let lab = "" + (i + 1);
-    let a = w.s;
-    if (v[0] === 0) {
-      a = w.s + v[1] * 60;
-      pushClipped(list, a, a + v[2] * 60, w, lab);
-      continue;
-    }
-    if (v[0] === 2) {
-      a = w.e + v[1] * 60;
-      pushClipped(list, a, a + v[2] * 60, w, lab);
-      continue;
-    }
-    for (let d = d0 - 1; d <= d1; d++) {
-      let k = d - d0;
-      if (v[4] === 1 && k > 1) continue;
-      if (v[4] === 2 && k !== nDays) continue;
-      a = localToUtc(d * 86400 + v[1] * 60);
-      pushClipped(list, a, a + v[2] * 60, w, lab);
-    }
-  }
-  let out = [];
-  for (let j = 0; j < list.length; j++) {
-    let x = list[j];
-    let last = out.length ? out[out.length - 1] : null;
-    if (last && x.s <= last.e) {
-      if (x.e > last.e) last.e = x.e;
-      if (("+" + last.l + "+").indexOf("+" + x.l + "+") < 0) last.l += "+" + x.l;
-    } else {
-      out.push({ s: x.s, e: x.e, l: x.l });
-    }
-  }
-  return out;
-}
-
-// ---------------- Repeating timers ----------------
+// Each start of an enabled timer in window w is a block [a, b, P, D, label]: from a to b,
+// on for D s every P s (P = 0: once, a timer that does not repeat; l = the 1-based timer
+// number). The relay's ON times are worked out from the blocks on the fly, never listed:
+// a repeat can have ~300 pulses a window (script memory). Kept small and flat: on the device
+// a deep path with large functions overflowed the stack (docs/device/engine.md).
 // Results in globals, so that no object is made per pulse.
 let pS = 0,
   pE = 0; // pulseAt: the pulse (pE = 0: none)
@@ -233,27 +174,56 @@ let sS = 0,
   sE = 0,
   sL = ""; // segAt / take: the ON stretch (sE = 0: none)
 
-// The pulse of a repeat (first pulse at a, block end b, period P s, pulse D s), clipped to
-// window w, that contains x or starts after it
-function pulseAt(w, a, b, P, D, x) {
+// The blocks of window w for timers tl and repeats rl
+function blocks(w, tl, rl) {
+  let out = [];
+  let d0 = Math.floor((w.s + tzOffset(w.s)) / 86400);
+  let d1 = Math.floor((w.e + tzOffset(w.e)) / 86400);
+  for (let i = 0; i < tl.length; i++) {
+    let v = tl[i];
+    // [enabled, length (min), period (min)]; no ternaries with sums or calls in them: the
+    // device's parser rejected one (docs/device/engine.md)
+    // flat conditions only: nested ones crashed the device (docs/device/engine.md)
+    let r = [v[5], v[2], 0];
+    if (rl.length > i && rl[i]) r = [rl[i][2], rl[i][1], rl[i][0]];
+    if (!r[0]) continue;
+    if (v[2] <= 0) continue;
+    if (v[3] === 1 && w.k === 2) continue;
+    if (v[3] === 2 && w.k === 1) continue;
+    let lo = d1;
+    if (v[0] === 1) lo = d0 - 1;
+    for (let d = lo; d <= d1; d++) {
+      if (v[0] === 1 && v[4] === 1 && d - d0 > 1) continue;
+      if (v[0] === 1 && v[4] === 2 && d !== d1) continue;
+      let a = w.s + v[1] * 60;
+      if (v[0] === 2) a = w.e + v[1] * 60;
+      if (v[0] === 1) a = localToUtc(d * 86400 + v[1] * 60);
+      out.push([a, a + r[1] * 60, r[2] * 60, v[2] * 60, "" + (i + 1)]);
+    }
+  }
+  return out;
+}
+
+// The pulse of block k, clipped to window w, that contains x or starts after it: pS..pE
+function pulseAt(w, k, x) {
   pE = 0;
+  let b = k[1];
   if (b > w.e) b = w.e;
   let y = x;
-  if (y < a) y = a;
+  if (y < k[0]) y = k[0];
   if (y < w.s) y = w.s;
   if (y >= b) return;
-  let s = a + Math.floor((y - a) / P) * P;
-  let e = s + D;
-  if (e > b) e = b;
-  if (e <= y) {
-    s += P;
-    e = s + D;
-    if (e > b) e = b;
-  }
+  let s = k[0];
+  let q = 0;
+  if (k[2]) q = Math.floor((y - k[0]) / k[2]);
+  s += q * k[2];
+  if (s + k[3] <= y) s += k[2];
+  if (!k[2] && s + k[3] <= y) return;
   if (s >= b) return;
-  if (s < w.s) s = w.s;
+  pE = s + k[3];
+  if (pE > b) pE = b;
   pS = s;
-  pE = e;
+  if (pS < w.s) pS = w.s;
 }
 
 // Adds a candidate interval (e > x) to the stretch sS..sE: one that contains x wins over
@@ -261,76 +231,85 @@ function pulseAt(w, a, b, P, D, x) {
 function take(s, e, l, x) {
   let a = s <= x;
   let b = sS <= x;
-  if (!sE || (a && !b) || (!a && !b && s < sS)) {
+  let take1 = !sE;
+  if (a && !b) take1 = true;
+  if (!a && !b && s < sS) take1 = true;
+  if (take1) {
     sS = s;
     sE = e;
     sL = l;
     return;
   }
-  if (a !== b || (!a && s > sS)) return;
+  if (a !== b) return;
+  if (!a && s > sS) return;
   if (s < sS) sS = s;
   if (e > sE) sE = e;
   if (("+" + sL + "+").indexOf("+" + l + "+") < 0) sL += "+" + l;
 }
 
-// The repeats of timers tl (rl = repeats) in window w. out = null: their pulse containing x
-// or the next one goes to take(); else one block per repeat [first pulse start, last pulse
-// end, label, every, duration] is pushed to out (the forecast and the public page)
-function repScan(w, tl, rl, x, out) {
-  let d0 = Math.floor((w.s + tzOffset(w.s)) / 86400);
-  let d1 = Math.floor((w.e + tzOffset(w.e)) / 86400);
-  for (let i = 0; i < rl.length; i++) {
-    let p = rl[i];
-    let v = tl[i];
-    if (!p || !p[2]) continue;
-    if (v[3] === 1 && w.k === 2) continue;
-    if (v[3] === 2 && w.k === 1) continue;
-    let P = p[0] * 60;
-    let D = v[2] * 60;
-    let lo = v[0] === 1 ? d0 - 1 : 0;
-    let hi = v[0] === 1 ? d1 : 0;
-    for (let d = lo; d <= hi; d++) {
-      let a = v[0] === 0 ? w.s + v[1] * 60 : w.e + v[1] * 60;
-      if (v[0] === 1) {
-        if (v[4] === 1 && d - d0 > 1) continue;
-        if (v[4] === 2 && d !== d1) continue;
-        a = localToUtc(d * 86400 + v[1] * 60);
-      }
-      let b = a + p[1] * 60;
-      pulseAt(w, a, b, P, D, out ? a : x);
-      if (!pE) continue;
-      if (!out) {
-        take(pS, pE, "" + (i + 1), x);
-        continue;
-      }
-      let fs = pS;
-      if (b > w.e) b = w.e;
-      pulseAt(w, a, b, P, D, a + Math.floor((b - 1 - a) / P) * P);
-      out.push([fs, pE, "" + (i + 1), p[0], v[2]]);
+// The ON stretch of window w (blocks bl) that contains x, else the next one: sS..sE, labels
+// sL (sE = 0: none), followed through every pulse that touches or overlaps its end
+function segAt(w, bl, x) {
+  sE = 0;
+  for (let i = 0; i < bl.length; i++) {
+    pulseAt(w, bl[i], x);
+    if (pE) take(pS, pE, bl[i][4], x);
+  }
+  for (let n = 0; n < 100 && sE; n++) {
+    let e = sE;
+    for (let i = 0; i < bl.length; i++) {
+      pulseAt(w, bl[i], e);
+      if (pE) take(pS, pE, bl[i][4], e);
     }
+    if (sE === e) return;
   }
 }
 
-// The ON stretch of window w that contains x, else the next one: sS..sE, labels sL (sE = 0:
-// none). plan = windowPlan(w, tl) (the timers that do not repeat); the repeats' pulses are
-// added, and the stretch is followed through everything that touches or overlaps its end.
-function segAt(w, plan, tl, rl, x) {
-  sE = 0;
-  for (let i = 0; i < plan.length; i++) {
-    if (plan[i].e > x) {
-      take(plan[i].s, plan[i].e, plan[i].l, x);
-      break;
+// The merged ON times of the blocks that do not repeat, sorted, into out: [s, e, "1+3"]
+// (the forecast and the public page: one pass, no call per block; segAt would cost ~3 times
+// the calls, and the device is slow)
+function onceTimes(w, bl, out) {
+  for (let i = 0; i < bl.length; i++) {
+    let s = bl[i][0];
+    let e = bl[i][1];
+    if (s < w.s) s = w.s;
+    if (e > w.e) e = w.e;
+    if (bl[i][2] || e <= s) continue;
+    // sorted insert by start (Array.sort is not available on Shelly)
+    let j = out.length;
+    out.push(null);
+    while (j > 0 && out[j - 1][0] > s) {
+      out[j] = out[j - 1];
+      j--;
     }
+    out[j] = [s, e, bl[i][4]];
   }
-  repScan(w, tl, rl, x, null);
-  for (let n = 0; n < 100 && sE; n++) {
-    let e = sE;
-    for (let i = 0; i < plan.length; i++) {
-      if (plan[i].s <= e && plan[i].e > e) take(plan[i].s, plan[i].e, plan[i].l, e);
+  let n = 0;
+  for (let i = 0; i < out.length; i++) {
+    let x = out[i];
+    let last = null;
+    if (n) last = out[n - 1];
+    if (last && x[0] <= last[1]) {
+      if (x[1] > last[1]) last[1] = x[1];
+      if (("+" + last[2] + "+").indexOf("+" + x[2] + "+") < 0) last[2] += "+" + x[2];
+      continue;
     }
-    repScan(w, tl, rl, e, null);
-    if (sE === e) break;
+    out[n] = x;
+    n++;
   }
+  while (out.length > n) out.pop();
+}
+
+// A repeat in short (the forecast, the public page): its first pulse's start in pS and its
+// last pulse's end in pE (pE = 0: no pulse in the window)
+function span(w, k) {
+  let b = k[1];
+  if (b > w.e) b = w.e;
+  let q = Math.floor((b - 1 - k[0]) / k[2]);
+  pulseAt(w, k, k[0] + q * k[2]);
+  let e = pE;
+  pulseAt(w, k, k[0]);
+  pE = e;
 }
 
 // ---------------- Config ----------------
@@ -549,7 +528,7 @@ function tick() {
   let pw = [cur, nxt, getWin(idx + (cur ? 2 : 1))];
   for (let k = 0; k < 3 && !upcoming && !on; k++) {
     if (!pw[k] || pw[k].s === cfg.s) continue; // skipped window
-    segAt(pw[k], windowPlan(pw[k], cfg.t), cfg.t, cfg.r, t);
+    segAt(pw[k], blocks(pw[k], cfg.t, cfg.r), t);
     if (!sE) continue;
     if (sS <= t) on = [sS, sE, sL];
     else upcoming = [sS, sE, sL];
@@ -663,25 +642,30 @@ function doPreview(req, params) {
   if (n < 1) n = 1;
   if (n > 8) n = 8;
   let t = getNow() || TBL_BASE;
-  let from = params.from ? Math.floor(params.from) : t;
-  let idx = findWin(from);
+  let idx = findWin(params.from ? Math.floor(params.from) : t);
   let out = [];
   for (let k = 0; k < n; k++) {
     let w = getWin(idx + k);
     if (!w) break;
-    let skip = w.s === cfg.s;
-    let on = [];
-    let rp = [];
-    if (!skip) {
-      let plan = windowPlan(w, tl);
-      for (let i = 0; i < plan.length; i++) on.push([plan[i].s, plan[i].e, plan[i].l]);
-      repScan(w, tl, rl, 0, rp);
+    let o = { t: w.title, k: w.k, s: w.s, e: w.e, skip: w.s === cfg.s, on: [], rp: [] };
+    let bl = [];
+    if (!o.skip) bl = blocks(w, tl, rl);
+    onceTimes(w, bl, o.on);
+    for (let i = 0; i < bl.length; i++) {
+      if (!bl[i][2]) continue;
+      span(w, bl[i]);
+      if (pE) o.rp.push([pS, pE, bl[i][4], bl[i][2] / 60, bl[i][3] / 60]);
     }
-    out.push({ t: w.title, k: w.k, s: w.s, e: w.e, skip: skip, on: on, rp: rp });
+    out.push(o);
   }
   req.result({ w: out, now: t });
 }
 
+// The forecast and the public page list a window's ON times as on: the merged ON times of
+// the timers that do not repeat [s, e, "1+3"], and rp: each repeat in short [first start,
+// last end, "2", every, duration (min)]. doPreview and pubBody loop over the blocks
+// themselves: one more frame on these paths overflowed the device's stack
+// (docs/device/engine.md).
 // RPC handlers are called deep inside the firmware's RPC machinery, where little
 // JS stack is left (Preview crashed with "Too much recursion" on the device).
 // So handlers only queue the call; the work runs from a fresh timer callback and
@@ -787,26 +771,35 @@ function pubBody(t) {
     out += n ? "," : "";
     out += '{"t":"' + win.title + '","k":' + win.k + ',"s":' + win.s + ',"e":' + win.e;
     out += ',"x":' + x + ',"on":[';
-    let plan = x ? [] : windowPlan(win, cfg.t);
-    for (let i = 0; i < plan.length; i++) {
-      out += (i ? "," : "") + "[" + plan[i].s + "," + plan[i].e + "]";
+    let o = { on: [], rp: [] };
+    let bl = [];
+    if (!x) bl = blocks(win, cfg.t, cfg.r);
+    onceTimes(win, bl, o.on);
+    for (let i = 0; i < bl.length; i++) {
+      if (!bl[i][2]) continue;
+      span(win, bl[i]);
+      if (pE) o.rp.push([pS, pE, bl[i][4], bl[i][2] / 60, bl[i][3] / 60]);
     }
+    for (let i = 0; i < o.on.length; i++)
+      out += (i ? "," : "") + "[" + o.on[i][0] + "," + o.on[i][1] + "]";
     out += "]";
-    if (v === 2) out += ',"rp":' + pubReps(win, x);
-    out += "}";
+    if (v === 2) out += ',"rp":[';
+    for (let i = 0; v === 2 && i < o.rp.length; i++) {
+      out +=
+        (i ? "," : "") +
+        "[" +
+        o.rp[i][0] +
+        "," +
+        o.rp[i][1] +
+        "," +
+        o.rp[i][3] +
+        "," +
+        o.rp[i][4] +
+        "]";
+    }
+    out += v === 2 ? "]}" : "}";
   }
   return out + "]}";
-}
-
-function pubReps(win, x) {
-  let rp = [];
-  if (!x) repScan(win, cfg.t, cfg.r, 0, rp);
-  let out = "[";
-  for (let i = 0; i < rp.length; i++) {
-    let b = rp[i];
-    out += (i ? "," : "") + "[" + b[0] + "," + b[1] + "," + b[3] + "," + b[4] + "]";
-  }
-  return out + "]";
 }
 
 function pubSend() {
@@ -1142,8 +1135,9 @@ function onDatesW(res, err) {
 }
 
 function datesEnd() {
-  if (datesOk && (TBL.length === 0 || TBL.length % 8 !== 0 || TBL.indexOf(datesNl) >= 0))
-    datesOk = false;
+  if (TBL.length === 0) datesOk = false;
+  if (TBL.length % 8 !== 0) datesOk = false;
+  if (TBL.indexOf(datesNl) >= 0) datesOk = false;
   if (!datesOk) {
     TBL = "";
     TBL_NAME = "";

@@ -85,7 +85,10 @@ const listening = (proc) =>
     previewCalls = [],
     setCalls = [];
   page.on("request", (r) => r.url().includes("Script.List") && listCalls.push(r.url()));
-  page.on("request", (r) => r.url().includes("ShabbatPreview") && previewCalls.push(r.url()));
+  page.on(
+    "request",
+    (r) => r.url().includes("ShabbatPreview") && previewCalls.push(JSON.parse(r.postData()))
+  );
   page.on("request", (r) => /KVS\.|ShabbatPub/.test(r.url()) && setCalls.push(r.url()));
   await page.goto(`http://localhost:${PORT}/script/1/ui`);
   await page.waitForSelector("text=הפעלה הבאה של הממסר");
@@ -171,6 +174,16 @@ const listening = (proc) =>
   const rsum = await page.textContent(".t.edit .tname");
   check(/כל 35 דק׳ למשך 4 שע׳/.test(rsum), "repeat in the timer's summary: " + rsum);
   await page.screenshot({ path: path.join(out, "4b-repeat.png"), fullPage: true });
+  // the forecast is asked 3 windows at a time (6 at once ran the device out of memory)
+  check(
+    previewCalls.every((p) => p.n === 3) && previewCalls.some((p) => p.from > 0),
+    "forecast in requests of 3: " + JSON.stringify(previewCalls.map((p) => [p.n, p.from]))
+  );
+  const pvCards = await page.$$eval(
+    ".card.col",
+    (c) => c.filter((x) => /\d\d:\d\d–/.test(x.textContent)).length
+  );
+  check(pvCards === 6, "forecast shows 6 windows: " + pvCards);
   await page.screenshot({ path: path.join(out, "4-preview.png"), fullPage: true });
 
   // save

@@ -135,7 +135,14 @@ Each has a reason in `docs/device/` and `docs/experiments/`.
   forecast or Settings requests on load).
 - **Controller code style**: call depth <= 5, flat expressions, named top-level callbacks,
   no `Array.prototype.sort`, at most 5 timers / handlers / concurrent `Shelly.call`s.
-  RPC handlers only queue work; a timer callback does it (`enqueue`/`runQueue`).
+  RPC handlers only queue work; a timer callback does it (`enqueue`/`runQueue`). Functions on
+  deep paths stay small (`test/sim.js` weighs each path: variables + 15 per frame <= 104);
+  `if` / `while` conditions at most 2 levels of parentheses (a nested one rebooted the
+  device); ternaries only between plain values (one with a sum and a call in a branch was a
+  syntax error). The device parses a function when it is first called, so a deploy can look
+  fine until the first tick: watch the script for a minute after deploying.
+- **The forecast is asked 3 windows at a time** (`ShabbatPreview {n: 3}`, then `from` the
+  third window's end): 5 windows with repeating timers ran the script out of memory.
 - **Controller minification stays conservative** (terser `compress: false`): no inlining or
   statement merging. Top-level names must survive; `test/sim.js` calls them.
 - **Script memory is tight** (~25 KB pool shared by running scripts; peak ~16-20 KB).
@@ -246,4 +253,6 @@ messages, CI logs and workflow artifacts, can be read by anyone and is hard to t
 - **Debugging the controller**: `Script.Eval {id, code: "CFG.debug=true"}` switches the
   per-tick debug log on in the running script (until restart). For a crash during boot, set
   `diag: true` in `src/main.js` and deploy a local build; do not commit it. Both flags stay
-  in every build, off; `npm test` runs the simulator once with them on (`FLAGS=1`).
+  in every build, off; `npm test` runs the simulator once with them on (`FLAGS=1`). The
+  device's log (with `console.log` and the `diag` lines) streams on the websocket
+  `/debug/log` (`docs/device/engine.md`).

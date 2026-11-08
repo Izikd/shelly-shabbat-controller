@@ -281,15 +281,80 @@ function refOn(t, timers, skipStart, reps) {
   return false;
 }
 
-// ---------- T0: limits, call depth ----------
+// ---------- T0: limits, call depth, stack weight ----------
+// The device's JS stack is small, and call depth alone does not measure it (fw 2.0.3,
+// docs/device/engine.md). A path's weight is its variables (parameters and let-declared names
+// of each function) + 15 per frame. On the device these overflowed: tickFromTimer > tick >
+// segAt > repScan > localToUtc (118) and pubSend > pubBody > onTimes > segAt > pulseAt (106);
+// these worked: runQueue > doPreview > repScan > pulseAt (104) and the 5-deep paths of main
+// such as pubSend > pubBody > findWin > getWin > dec (~104). The limit is 104.
+const STACK_LIMIT = 104;
+// Nested groups in a condition crashed the whole device (a reboot, not a script error), so
+// if / while conditions keep at most 2 levels of parentheses.
+const COND_NEST = 2;
+function condNesting(code) {
+  const src = code.replace(/"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'/g, '""');
+  const re = /\b(if|while)\s*\(/g;
+  let m,
+    worst = 0,
+    at = "";
+  while ((m = re.exec(src))) {
+    let i = re.lastIndex,
+      d = 1,
+      max = 1;
+    while (d && i < src.length) {
+      const c = src[i++];
+      if (c === "(") max = Math.max(max, ++d);
+      else if (c === ")") d--;
+    }
+    if (max > worst) {
+      worst = max;
+      at = src.slice(m.index, i).slice(0, 80);
+    }
+  }
+  return [worst, at];
+}
+function stackWeights(code) {
+  const out = {};
+  const re = /function\s+(\w+)\s*\(([^)]*)\)\s*\{/g;
+  let m;
+  while ((m = re.exec(code))) {
+    let i = re.lastIndex,
+      d = 1;
+    while (d && i < code.length) {
+      const c = code[i++];
+      if (c === "{") d++;
+      else if (c === "}") d--;
+    }
+    const body = code.slice(re.lastIndex, i);
+    let n = m[2].trim() ? m[2].split(",").length : 0;
+    const lr = /\blet\s+([^;]*?)(;|\)|$)/gm;
+    let x;
+    while ((x = lr.exec(body))) {
+      let dep = 0;
+      n++;
+      for (const c of x[1]) {
+        if ("([{".includes(c)) dep++;
+        else if (")]}".includes(c)) dep--;
+        else if (c === "," && !dep) n++;
+      }
+    }
+    out[m[1]] = n;
+  }
+  return out;
+}
 {
   const d = makeDevice();
   check(Object.keys(d.rpc).length <= 5, "rpc handlers " + Object.keys(d.rpc).length);
   check(d.timers.length === 1, "one repeating timer");
   check(d.endpoints.ui, "ui endpoint");
+  const W = stackWeights(CODE);
   let depth = 0,
     maxDepth = 0,
     maxPath = [],
+    weight = 0,
+    maxW = 0,
+    maxWPath = [],
     st = [];
   const names = vm
     .runInContext("Object.keys(this)", d.sb)
@@ -302,15 +367,21 @@ function refOn(t, timers, skipStart, reps) {
     const f = d.sb[n];
     d.sb[n] = function () {
       depth++;
+      weight += 15 + (W[n] || 0);
       st.push(n);
       if (depth > maxDepth) {
         maxDepth = depth;
         maxPath = st.slice();
       }
+      if (weight > maxW) {
+        maxW = weight;
+        maxWPath = st.slice();
+      }
       try {
         return f.apply(this, arguments);
       } finally {
         depth--;
+        weight -= 15 + (W[n] || 0);
         st.pop();
       }
     };
@@ -334,15 +405,25 @@ function refOn(t, timers, skipStart, reps) {
     d.tick();
   }
   d.call("ShabbatPub", { send: true });
+  d.flush();
   d.call("ShabbatPreview", { n: 8 });
+  d.call("ShabbatPreview", { n: 3, timers: [[2, -60, 5, 0, 0, 0]], reps: [[20, 180, 1]] });
+  d.call("ShabbatSet", { test: 1762597800 });
+  d.call("ShabbatSet", { reload: true });
   d.call("ShabbatGet", {});
   check(maxDepth <= 5, "max JS call depth " + maxDepth + ": " + maxPath.join(" > "));
+  check(maxW <= STACK_LIMIT, "stack weight " + maxW + ": " + maxWPath.join(" > "));
+  const nest = condNesting(CODE);
+  check(nest[0] <= COND_NEST, "condition nesting " + nest[0] + ": " + nest[1]);
   console.log(
     "T0 limits: rpc",
     Object.keys(d.rpc).join(","),
     "| max JS call depth",
     maxDepth,
-    "(" + maxPath.join(" > ") + ")"
+    "(" + maxPath.join(" > ") + ")",
+    "| stack weight",
+    maxW,
+    "(" + maxWPath.join(" > ") + ")"
   );
 }
 
@@ -350,8 +431,8 @@ function refOn(t, timers, skipStart, reps) {
   // RPC handlers must only enqueue (the firmware calls them with little stack left)
   const d = makeDevice();
   let calls = 0;
-  const wp = d.sb.windowPlan;
-  d.sb.windowPlan = function () {
+  const wp = d.sb.segAt;
+  d.sb.segAt = function () {
     calls++;
     return wp.apply(this, arguments);
   };

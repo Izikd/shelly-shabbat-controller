@@ -627,16 +627,30 @@ if (typeof document !== "undefined")
     function dirty() {
       return JSON.stringify(draft()) !== S.saved;
     }
-    var pvTimer = null;
+    var pvTimer = null,
+      pvSeq = 0;
     function preview() {
       if (!S.cfg) return; // the timers are not known yet: load() asks once they are
       clearTimeout(pvTimer);
       pvTimer = setTimeout(function () {
-        var d = draft();
-        d.n = 6;
+        // 6 windows in two requests of 3: 6 at once with repeating timers ran the controller out
+        // of memory (docs/device/memory.md)
+        var d = draft(),
+          my = ++pvSeq;
+        d.n = 3;
         rpc("ShabbatPreview", d, function (j) {
-          S.prev = j.w;
-          render();
+          if (my !== pvSeq) return;
+          if (j.w.length < 3) {
+            S.prev = j.w;
+            render();
+            return;
+          }
+          d.from = j.w[2].e;
+          rpc("ShabbatPreview", d, function (k) {
+            if (my !== pvSeq) return;
+            S.prev = j.w.concat(k.w);
+            render();
+          });
         });
       }, 250);
     }
