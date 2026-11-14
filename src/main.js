@@ -407,11 +407,24 @@ function getNow() {
   return Math.floor(sys.unixtime);
 }
 
+// A Switch.Set on its way: ticks leave the relay alone until it is answered (the output
+// read meanwhile is the old one, and a difference would be taken for a manual switch)
+let swBusy = false;
+let swOn = false; // the state it asked for
+let swLog = ""; // its cause for the log ("" = the output does not change: nothing to log)
 function onSwitchSet(res, err, msg) {
+  swBusy = false;
   if (err) {
+    // not switched: forget what we know, so the next tick tries again (and does not take
+    // the unchanged output for a manual switch)
     console.log("Switch.Set failed:", err, msg);
     lastWanted = null;
+    lastOut = null;
+    lastUntil = 0;
+    return;
   }
+  lastOut = swOn;
+  if (swLog) addLog(swOn, swLog);
 }
 
 // ---- event log (KVS, survives reboot) ----
@@ -442,7 +455,7 @@ function addLog(on, cause) {
 // on: wanted state; until: end of the current ON interval (UTC s) or 0; cause: log cause
 function applyRelay(on, until, cause) {
   let st = Shelly.getComponentStatus("switch", CFG.switchId);
-  if (!st) return;
+  if (!st || swBusy) return;
   // changes we did not command: manual (app, button, web) or the firmware auto-off
   if (lastOut !== null && st.output !== lastOut) {
     let byTimer = st.source === "timer";
@@ -467,10 +480,10 @@ function applyRelay(on, until, cause) {
   lastWanted = on;
   lastUntil = auto ? until : 0;
   if (!needSet) return;
-  if (st.output !== on) {
-    addLog(on, cause);
-    lastOut = on;
-  }
+  swLog = "";
+  if (st.output !== on) swLog = cause;
+  swOn = on;
+  swBusy = true;
   Shelly.call("Switch.Set", p, onSwitchSet);
 }
 

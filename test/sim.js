@@ -111,6 +111,8 @@ function makeDevice(opts) {
             dev.kvs[params.key] = params.value;
             res = {};
           }
+        } else if (method === "Switch.Set" && dev.swErr) {
+          err = -1; // refused: the relay is not switched
         } else if (method === "Switch.Set") {
           dev.relay = params.on;
           dev.src = "loopback";
@@ -950,6 +952,38 @@ useRef("pt");
       dev.kvs.shabbat_elev_log.length < 253,
     "log capped at 15 entries"
   );
+  // a Switch.Set that fails is tried again; it is not a manual switch, and not in the log
+  {
+    const d = makeDevice({ now: 1762700000 }); // Sunday: OFF
+    d.swErr = true;
+    d.now = SAT1200 + 60;
+    d.tick();
+    let s = d.call("ShabbatGet", {}).d;
+    check(
+      d.relay === false && s.st.manual === false && s.log === "",
+      "failed Switch.Set: " + s.log
+    );
+    d.now += 15;
+    d.tick();
+    check(d.call("ShabbatGet", {}).d.st.manual === false, "still not a manual hold");
+    d.swErr = false;
+    d.now += 15;
+    d.tick();
+    s = d.call("ShabbatGet", {}).d;
+    check(d.relay === true && /^\d+1a$/.test(s.log), "tried again, ON, logged once: " + s.log);
+    check(d.toggleAfter === SAT1300 - d.now + 5, "with the firmware auto-off");
+    // a tick before the Switch.Set is answered leaves the relay alone
+    const d2 = makeDevice({ now: 1762700000 }); // Sunday: OFF
+    d2.now = SAT1200 + 60;
+    d2.timers[0](); // asks for ON; not answered yet
+    const sets = d2.pending.length;
+    d2.timers[0]();
+    check(d2.pending.length === sets, "no second Switch.Set while one is on its way");
+    d2.flush();
+    d2.tick();
+    s = d2.call("ShabbatGet", {}).d;
+    check(d2.relay === true && s.st.manual === false, "ON, no manual hold");
+  }
   // test time: no firmware auto-off (simulated clock does not advance)
   dev.call("ShabbatSet", { test: SAT1200 + 60 });
   check(dev.relay === true && dev.toggleAfter === undefined, "no toggle_after in test mode");
