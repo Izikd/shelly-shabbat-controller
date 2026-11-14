@@ -108,6 +108,7 @@ function makeDevice(opts) {
         } else if (method === "KVS.Set") {
           if (String(params.value).length > 253) err = -1;
           else {
+            if (params.key === "shabbat_elev_log") dev.logSets = (dev.logSets || 0) + 1;
             dev.kvs[params.key] = params.value;
             res = {};
           }
@@ -938,7 +939,23 @@ useRef("pt");
       ev.some((e) => /1m$/.test(e)),
     "log entries: " + g.log
   );
+  // the log is saved at most every 30 minutes (flash wear); the page gets it from memory
+  check(dev.kvs.shabbat_elev_log !== g.log, "the last events are not saved yet");
+  for (let i = 0; i < 120; i++) dev.tick();
   check(dev.kvs.shabbat_elev_log === g.log, "log saved to KVS");
+  {
+    // a timer that repeats every 5 minutes for a day: ~250 switches, few saves
+    const d = makeDevice({ now: 1762700000 });
+    d.call("ShabbatSet", { timers: [[0, 0, 2, 0, 0, 0]], reps: [[5, 1440, 1]] });
+    d.logSets = 0;
+    const n0 = d.relaySets;
+    for (let t = 1763130000; t < 1763130000 + 86400; t += 15) {
+      d.now = t; // Fri 14/11/2025 16:20 Israel, a day on
+      d.tick();
+    }
+    check(d.relaySets - n0 > 400, "the repeat switched: " + (d.relaySets - n0));
+    check(d.logSets > 10 && d.logSets <= 49, "log saves in a day of repeats: " + d.logSets);
+  }
   const dev2 = makeDevice({ kvs: dev.kvs, now: 1762700000 });
   check(dev2.call("ShabbatGet", {}).d.log === g.log, "log survives reboot");
   // log cap

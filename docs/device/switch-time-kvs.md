@@ -13,6 +13,11 @@ the device) or *design* (a rule we chose). Recheck on new firmware or other mode
   log are sized to fit (`test/sim.js` checks). Repeats (`r`, ~12 characters each) share the
   timers' value: 12 plain timers or 4 timers with 3 repeats fit; 12 repeating timers do not,
   and `ShabbatSet` answers "too many timers".
+- Every `KVS.Set` is a write to the device's flash. The relay log is therefore saved at most
+  once in 30 minutes (`CFG.logTicks`; the first change after a quiet half hour at once, later
+  ones by the tick that ends it): a timer repeating every 5 minutes switches ~580 times a
+  day and saved the log each time. `ShabbatGet` serves the log from memory; a restart loses
+  at most its last 30 minutes (*design*; `test/sim.js` counts the saves).
 - The page keeps its beta-channel choice in KVS key `shabbat_upd_beta`, written by the
   browser with `KVS.Set` (no script memory). It reads it with `KVS.GetMany {match}`, not
   `KVS.Get`, because `KVS.Get` of a missing key is an RPC error (HTTP 500, which the browser

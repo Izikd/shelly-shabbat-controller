@@ -45,6 +45,7 @@ let CFG = {
   // them would drop the saved timers and log
   logKey: "shabbat_elev_log",
   logMax: 15,
+  logTicks: 120, // ticks (30 min) between saves of the log: flash wear, see saveLog
   pubKey: "shabbat_pub", // publishing settings {u, i, k} (absent = not published)
   pubN: 6, // windows sent to the schedule service
   tag: "shabbat", // Switch.Set tag: tells our commands from manual ones
@@ -432,13 +433,19 @@ function onLogSaved(res, err) {
   logSaving = false;
   if (logDirty) saveLog();
 }
+// Saved at once when nothing was saved in the last 30 minutes, otherwise by the tick that
+// ends them: a timer that repeats every 5 minutes switches ~580 times a day, and every save
+// is a write to the device's flash. ShabbatGet serves the log from memory, so the page
+// misses nothing; a restart loses at most the last 30 minutes of it.
+let logHold = 0; // ticks until the next save is allowed
 function saveLog() {
-  if (logSaving) {
+  if (logSaving || logHold > 0) {
     logDirty = true;
     return;
   }
   logSaving = true;
   logDirty = false;
+  logHold = CFG.logTicks;
   let str = "";
   for (let i = 0; i < logArr.length; i++) str += (i ? "," : "") + logArr[i];
   Shelly.call("KVS.Set", { key: CFG.logKey, value: str }, onLogSaved);
@@ -493,6 +500,8 @@ function winInfo(w) {
 
 function tick() {
   if (!cfg || datesBusy) return; // reading the table: keep the relay as it is
+  if (logHold > 0) logHold--;
+  if (logDirty && !logHold) saveLog();
   pubCheck();
   let t = getNow();
   let auto = cfg.a !== 0;
