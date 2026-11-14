@@ -152,7 +152,7 @@ so a reload comes back to it.
   sync, device memory and storage, script memory and errors (read by the browser from firmware
   RPCs, so it costs the controller no memory).
 - **Hebrew dates** on windows (browser's built-in Hebrew calendar).
-- **Public schedule page** (optional, Settings tab): "Create page" gives a permanent link to a read-only page with the on times of the next 6 windows, in Hebrew and English,
+- **Public schedule page** (optional, Settings tab): "Create page" gives a permanent link to a read-only page with the on times of the next 6 windows (fewer when they have very many on times), in Hebrew and English,
   for neighbours, a building lobby or a WhatsApp group. No account is needed. The device sends
   the times to the schedule service once a day, ~30 s after every change and after a restart;
   the page warns when it has not heard from the device for two days. "Stop publishing" deletes

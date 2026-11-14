@@ -1139,6 +1139,27 @@ useRef("pt");
   });
   dev3.tick();
   check(dev3.reqs.length === 1, "12 timers: sent");
+  // 12 timers on every day of the three-day Yom Tov windows of Tishrei 5787 abroad: more
+  // than 24 ON times in a window (the service takes 48, test/service_test.mjs), and the body
+  // stays within the service's 4 KB by sending fewer windows
+  {
+    const many = Array.from({ length: 12 }, (_, i) => [1, i * 115, 5, 0, 0, 1]);
+    const d = makeDevice({
+      kvs: {
+        shabbat_elev_cfg: JSON.stringify({ t: many, a: 1, s: 0 }),
+        shabbat_pub: JSON.stringify(P)
+      },
+      now: 1789000000, // Thu 10/09/2026, before Rosh Hashana
+      dates: DATES.ny
+    });
+    d.tick();
+    const body = d.reqs[0].body,
+      bb = JSON.parse(body);
+    const most = Math.max(...bb.w.map((w) => w.on.length));
+    check(most > 24 && most <= 48, "ON times in the longest window: " + most);
+    check(body.length <= 4096 && bb.w.length >= 3 && bb.w.length < 6, "body " + body.length);
+    console.log("   many ON times:", bb.w.map((w) => w.on.length).join(" "), body.length);
+  }
   // repeating timers: v 2, the repeats in short
   const dev4 = makeDevice({
     kvs: {

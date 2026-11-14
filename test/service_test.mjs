@@ -162,6 +162,14 @@ r = await call("PUT", "/api/s/" + id + "/name", {
 check(r.status === 400 && /too large/.test(r.text), "too large in bytes: " + r.text);
 r = await call("PUT", "/api/s/" + id, { body: { ...sched, v: 2 }, key });
 check(r.status === 400 && /bad schedule/.test(r.text), "invalid schedule rejected");
+// many ON times in a window: 12 timers on each day of a three-day Yom Tov (up to 48)
+const manyOn = (n) => ({
+  ...sched,
+  w: [{ ...W1, on: Array.from({ length: n }, (_, i) => [W1.s + i * 600, W1.s + i * 600 + 300]) }]
+});
+check(typeof validSchedule(manyOn(48)) === "object", "48 ON times in a window accepted");
+check(validSchedule(manyOn(49)) === "on", "49 refused");
+check(JSON.stringify(manyOn(48)).length < LIMITS.body, "and they fit the body limit");
 
 // ---------- public page ----------
 r = await call("GET", "/s/" + id, { headers: { "Accept-Language": "he-IL,he;q=0.9" } });

@@ -785,7 +785,8 @@ function pubCheck() {
 // time zone, for the page's times; left out with no table). With repeating timers v is 2 and
 // each window also has rp: [[first pulse start, last pulse end, every, duration], ...]
 // (minutes), the repeats in short; a service that knows only v 1 then refuses the schedule.
-// Assembled as a string, without building the objects first (script memory).
+// Assembled as a string, without building the objects first (script memory). At most 4 KB
+// (the service's limit): fewer windows when they have many ON times.
 function pubBody(t) {
   let idx = findWin(t);
   let v = 1;
@@ -796,6 +797,9 @@ function pubBody(t) {
   for (let n = 0; n < CFG.pubN; n++) {
     let win = getWin(idx + n);
     if (!win) break;
+    // the service takes 4 KB: a window with many ON times is up to ~1.6 KB (48 of them,
+    // 12 timers on each day of a three-day Yom Tov), so fewer windows are sent then
+    if (out.length > 2400) break;
     let x = win.s === cfg.s ? 1 : 0;
     out += n ? "," : "";
     out += '{"t":"' + win.title + '","k":' + win.k + ',"s":' + win.s + ',"e":' + win.e;

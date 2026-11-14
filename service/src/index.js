@@ -104,7 +104,8 @@ export function validSchedule(d) {
     if (x.k !== 1 && x.k !== 2 && x.k !== 3) return "k";
     if (!isInt(x.s, T_MIN, T_MAX) || !isInt(x.e, x.s + 1, x.s + 4 * 86400)) return "s/e";
     if (x.x !== 0 && x.x !== 1) return "x";
-    if (!Array.isArray(x.on) || x.on.length > 24) return "on";
+    // 12 timers on each of the 4 calendar days a three-day Yom Tov touches
+    if (!Array.isArray(x.on) || x.on.length > 48) return "on";
     const on = [];
     for (const o of x.on) {
       if (!Array.isArray(o) || o.length !== 2) return "on[]";
