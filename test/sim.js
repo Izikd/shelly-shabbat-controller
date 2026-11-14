@@ -1020,6 +1020,7 @@ useRef("pt");
   check(r.ok && r.d.on === false, "pub state off");
   for (const bad of [
     { u: "ftp://x.example", i: "abcdefghij", k: "k".repeat(24) },
+    { u: "http://x.example", i: "abcdefghij", k: "k".repeat(24) }, // the key would go in clear
     { u: "https://x.example", i: "ab", k: "k".repeat(24) },
     { u: "https://x.example", i: "abcdefghij", k: "short" },
     { u: 'https://x.example/"', i: "abcdefghij", k: "k".repeat(24) },

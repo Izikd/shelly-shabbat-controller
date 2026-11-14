@@ -762,7 +762,7 @@ function okStr(s, lo, hi) {
 
 function validPub(p) {
   if (!p || !okStr(p.u, 10, 100) || !okStr(p.i, 4, 32) || !okStr(p.k, 16, 64)) return false;
-  return p.u.indexOf("https://") === 0 || p.u.indexOf("http://") === 0;
+  return p.u.indexOf("https://") === 0; // never http: the write key goes in a header
 }
 
 function pubSoon(sec) {
