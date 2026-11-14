@@ -77,7 +77,7 @@ The owner works in stages and says when to move on; do not run ahead of the curr
   Never push a `v*` tag or run the Release workflow unless asked; the owner picks the
   version. Cloud sessions cannot push tags (403): release by running the workflow with the
   version (GitHub API `workflow_dispatch` on `release.yml`, ref `main`), which creates the
-  tag itself. Everything works without
+  tag itself. The workflow refuses a commit that is not on `main`. Everything works without
   tags: builds are stamped `version dev - commit <sha> - built <ISO time>`.
 - License: MIT (`LICENSE`). Every source file starts with an SPDX line,
   `// SPDX-License-Identifier: MIT` (`#` or `--` in other languages), after a shebang if there
@@ -202,7 +202,8 @@ messages, CI logs and workflow artifacts, can be read by anyone and is hard to t
 - **Workflows**: keep `permissions` minimal per workflow (CI `contents: read`). Never add
   `pull_request_target` or `workflow_run` jobs that check out or run pull request code; never
   pass secrets to jobs that run on pull requests. New third-party actions only from known
-  publishers, pinned to a version (better: a commit SHA).
+  publishers, pinned to a commit SHA with the version in a comment (as the existing ones
+  are; a version tag can be moved).
 - **The `library` branch and release assets are installed on people's devices** (the
   Scripts -> Library URL points at the branch, and the page's Check for updates installs from
   it, so a push there reaches every user on their next install or update; `library-beta`
