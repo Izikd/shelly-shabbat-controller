@@ -71,3 +71,20 @@ of the first entry (tools/gen_table.py) and its table (src/table.js) were remove
 - **Decision**: read the header in 1 KB pieces, then the windows line at its offset so the
   reply's string is the table; drop the old table before a reload and skip ticks meanwhile
   (the relay is left as it is for the ~1 s read). `test/sim.js` checks the read sizes.
+
+## 2026-11-14 - Far north: no havdalah in summer
+- **Question**: what does the table hold where the sun does not get 8.5 degrees below the
+  horizon in summer (above ~58 degrees north)?
+- **Method**: `sdWindows` in Node with the pinned hebcal, 2027, by coordinates. Not on
+  hardware (the table is computed in the browser).
+- **Result**: hebcal gives no Havdalah event for those weeks, and the window stayed open
+  until the next one: Stockholm one window of 43 days from 4 June, Helsinki 50 days, Tromso
+  129 days. Clock timers "every day" would have fired daily for weeks, and the schedule
+  service refuses windows over 4 days. With `havdalahMins: 72` Stockholm, Helsinki and
+  Reykjavik have a window every week (the longest ~74 hours, a three-day Yom Tov); Tromso
+  has no sunset either, so weeks have no window at all.
+- **Decision**: `sdBuild` checks the windows (`sdSane`: none longer than 4 days, none more
+  than a week after the last one ended). If they fail, the whole table is computed with
+  havdalah 72 minutes after sunset (`SD_HM`, `"hm":72` in the `//L` line, and the page says
+  so when saving); if that fails too, the place is refused. `tools/gen_ref.mjs` checks
+  Stockholm, Glasgow (by degrees) and Tromso (refused).

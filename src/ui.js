@@ -86,6 +86,7 @@ if (typeof document !== "undefined")
         loc: "מיקום",
         locNone: "לא נבחר מיקום – הממסר לא יופעל עד שתבחר מיקום.",
         locInfo: "{0} · זמנים עד {1}",
+        locHm: "במקום הזה אין בקיץ צאת הכוכבים: ההבדלה חושבה {0} דקות אחרי השקיעה.",
         locSet: "בחר מיקום",
         locChange: "שנה מיקום",
         locHint: "הזמנים מחושבים בדפדפן עם hebcal, שנטען מהאינטרנט רק בלחיצה.",
@@ -289,6 +290,7 @@ if (typeof document !== "undefined")
         loc: "Location",
         locNone: "No location set – the relay will not switch until you set one.",
         locInfo: "{0} · times until {1}",
+        locHm: "No nightfall here in summer: havdalah is {0} minutes after sunset.",
         locSet: "Set location",
         locChange: "Change location",
         locHint:
@@ -1746,6 +1748,8 @@ if (typeof document !== "undefined")
             hebcal.version,
             Math.floor(now / 1000)
           );
+          // the far north: say that havdalah is by minutes (src/tablegen.js)
+          if (code.indexOf('"hm"') > 0) window.alert(tr(L.locHm, SD_HM));
           return devRpc("Script.List");
         })
         .then(function (l) {

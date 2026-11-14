@@ -52,7 +52,9 @@ Download `shabbat_controller.js` and `shabbat_ui.js` from the latest
    (candle lighting 18 minutes before sunset - 40 in Jerusalem, 30 in Haifa; havdalah at 8.5
    degrees; two-day Yom Tov abroad) and writes them as the code of a script named
    `shabbat_dates`, which is never started. Set the location again within 5 years (the page
-   warns a year ahead) to extend the times.
+   warns a year ahead) to extend the times. In the far north, where summer nights give no havdalah
+   time at 8.5 degrees, havdalah is 72 minutes after sunset all year (the page tells you);
+   places with no sunset in summer are refused.
 
 ### Install from the Shelly script library
 In the device web UI: Scripts -> Library -> Configure URL, enter

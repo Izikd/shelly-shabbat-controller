@@ -53,3 +53,22 @@ writeFileSync(
       .join(",\n") +
     "\n}\n"
 );
+
+// The far north (src/tablegen.js): no havdalah by degrees in summer -> by minutes after
+// sunset; no sunset either -> refused. No window may last weeks.
+const north = (n, la, lo, tz) =>
+  sdParse(sdBuild(hc, { n, cc: "", la, lo, tz, il: false }, FROM, TO, HC, 1735689600));
+const longest = (p) => Math.max(...p.w.map((w) => w.e - w.s)) / 3600;
+const sto = north("Stockholm", 59.33, 18.06, "Europe/Stockholm");
+if (sto.meta.hm !== 72 || longest(sto) > 80 || sto.w.length < 300)
+  throw new Error("Stockholm: " + JSON.stringify([sto.meta.hm, longest(sto), sto.w.length]));
+const gla = north("Glasgow", 55.86, -4.25, "Europe/London");
+if (gla.meta.hm !== undefined || longest(gla) > 80) throw new Error("Glasgow: by degrees");
+let refused = false;
+try {
+  north("Tromso", 69.65, 18.96, "Europe/Oslo");
+} catch (e) {
+  refused = /no Shabbat times/.test(e.message);
+}
+if (!refused) throw new Error("Tromso: expected to be refused");
+console.log("far north: Stockholm by minutes, Glasgow by degrees, Tromso refused");

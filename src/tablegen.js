@@ -10,7 +10,8 @@
 // so that starting it by mistake does nothing:
 //   // shabbat_dates v1 - DO NOT START ...      header
 //   //N Petah Tiqwa                             place name (ASCII)
-//   //L {"n":..,"cc":..,"la":..,"lo":..,"tz":..,"il":1,"at":..,"hc":..}  for the page
+//   //L {"n":..,"cc":..,"la":..,"lo":..,"tz":..,"il":1,"at":..,"hc":..}  for the page (and
+//                                               "hm":72 when havdalah is by minutes)
 //   //Z Asia/Jerusalem                          time zone of the times below
 //   //T Shabbat|Pesach|...                      window titles
 //   //S 7200,1924992000                         standard UTC offset (s), end of the DST data
@@ -43,15 +44,18 @@ function sdHoliday(desc) {
 
 // Windows from candle lighting to havdalah: [[start, end, title], ...] (UTC s), with hebcal's
 // defaults for the place (candle-lighting minutes by city, havdalah at 8.5 degrees).
-// loc: a hebcal Location (it says Israel or abroad); from/to: Date.
-function sdWindows(hc, loc, from, to) {
-  var ev = hc.HebrewCalendar.calendar({
+// loc: a hebcal Location (it says Israel or abroad); from/to: Date; hm: havdalah this many
+// minutes after sunset instead (sdBuild, for the far north).
+function sdWindows(hc, loc, from, to, hm) {
+  var opt = {
     start: from,
     end: to,
     candlelighting: true,
     location: loc,
     il: loc.getIsrael()
-  });
+  };
+  if (hm) opt.havdalahMins = hm;
+  var ev = hc.HebrewCalendar.calendar(opt);
   var out = [],
     open = null;
   for (var i = 0; i < ev.length; i++) {
@@ -77,6 +81,19 @@ function sdWindows(hc, loc, from, to) {
     }
   }
   return out;
+}
+
+// Far north, the sun does not get 8.5 degrees below the horizon in summer: hebcal then gives
+// no havdalah, and a window would stay open for weeks (Stockholm: 43 days). Further north there
+// is no sunset either, and weeks have no window at all. True when w has neither: no window
+// longer than 4 days (a three-day Yom Tov is ~74 hours), none more than a week after the last.
+var SD_HM = 72; // havdalah, minutes after sunset, where the 8.5 degrees give no time
+function sdSane(w) {
+  for (var i = 0; i < w.length; i++) {
+    if (w[i][1] - w[i][0] > 4 * 86400) return false;
+    if (i && w[i][0] - w[i - 1][1] > 7 * 86400) return false;
+  }
+  return w.length > 0;
 }
 
 // UTC offset (s) of time zone tz at UTC second t, from the browser's time zone data
@@ -145,8 +162,13 @@ function sdAscii(s) {
 // hcVer: hebcal version (shown on the page); at: when computed (UTC s)
 function sdBuild(hc, place, from, to, hcVer, at) {
   var loc = new hc.Location(place.la, place.lo, !!place.il, place.tz, place.n, place.cc);
-  var w = sdWindows(hc, loc, from, to);
-  if (!w.length) throw new Error("no windows");
+  var w = sdWindows(hc, loc, from, to),
+    hm = 0;
+  if (w.length && !sdSane(w)) {
+    hm = SD_HM;
+    w = sdWindows(hc, loc, from, to, hm);
+  }
+  if (!sdSane(w)) throw new Error("no Shabbat times all year at this place");
   var zEnd = Math.floor(to.getTime() / 1000) + 40 * 86400;
   var z = sdZone(place.tz, Math.floor(from.getTime() / 1000) - 86400, zEnd);
   var titles = [],
@@ -168,6 +190,7 @@ function sdBuild(hc, place, from, to, hcVer, at) {
     at: at,
     hc: hcVer
   };
+  if (hm) meta.hm = hm; // havdalah by minutes: the page says so
   return (
     SD_HEAD +
     " - DO NOT START this script. Shabbat & Yom Tov times for shabbat_controller, " +
