@@ -857,6 +857,22 @@ useRef("pt");
   const T12 = Array.from({ length: 12 }, () => [1, 600, 5, 0, 0, 0]);
   r = dev.call("ShabbatSet", { timers: T12, reps: T12.map(() => [20, 1440, 1]) });
   check(!r.ok && r.msg === "too many timers", "12 repeating timers: too long for KVS");
+  // refused settings are not used either (they used to stay in RAM until the restart)
+  g = dev.call("ShabbatGet", {}).d;
+  check(
+    g.cfg.timers.length === 4 && g.cfg.reps.length === 4 && g.cfg.auto === true,
+    "refused timers are not in use: " + JSON.stringify(g.cfg)
+  );
+  r = dev.call("ShabbatSet", { timers: T12, reps: T12.map(() => [20, 1440, 1]), auto: false });
+  g = dev.call("ShabbatGet", {}).d;
+  check(!r.ok && g.cfg.auto === true && g.cfg.timers.length === 4, "refused whole, auto too");
+  // 12 long timers fit, but not with a skipped window as well: the skip is refused, not half set
+  const T12b = Array.from({ length: 12 }, (x, i) => [1, 1200 + i, 120, 0, 0, 1]);
+  r = dev.call("ShabbatSet", { timers: T12b });
+  check(r.ok && r.d.cfg.timers.length === 12, "12 long timers fit");
+  r = dev.call("ShabbatSet", { skip: true });
+  g = dev.call("ShabbatGet", {}).d;
+  check(!r.ok && g.cfg.skip === 0, "skip that does not fit is refused: " + g.cfg.skip);
   console.log("T8 repeating timers: validation, relay, auto-off, preview, save, reboot: OK");
 }
 

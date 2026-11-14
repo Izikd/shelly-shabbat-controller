@@ -572,6 +572,8 @@ function doSet(req, params) {
     req.error(-1, "starting");
     return;
   }
+  // the changes go into a copy: settings that are refused must not stay in use
+  let old = cfg;
   let changed = false;
   if (params.timers !== undefined) {
     // new timers replace the repeats too (the repeats belong to the timers by position)
@@ -580,19 +582,26 @@ function doSet(req, params) {
       req.error(-1, "invalid timers");
       return;
     }
+    cfg = { t: old.t, a: old.a, s: old.s, r: old.r };
     cfg.t = params.timers;
     cfg.r = rl;
     changed = true;
   }
   if (params.auto !== undefined) {
-    cfg.a = params.auto ? 1 : 0;
+    cfg = { t: cfg.t, a: params.auto ? 1 : 0, s: cfg.s, r: cfg.r };
     changed = true;
   }
   if (params.skip !== undefined) {
     // true -> skip the current/next window; false -> no skip
     let w = getWin(findWin(getNow() || TBL_BASE));
-    cfg.s = params.skip && w ? w.s : 0;
+    cfg = { t: cfg.t, a: cfg.a, s: params.skip && w ? w.s : 0, r: cfg.r };
     changed = true;
+  }
+  // the KVS value is short; checked before anything else is changed
+  if (changed && cfgJson().length > 250) {
+    cfg = old;
+    req.error(-1, "too many timers");
+    return;
   }
   if (params.resume) {
     manualHold = null;
@@ -605,10 +614,6 @@ function doSet(req, params) {
     lastWanted = null;
   }
   if (changed) {
-    if (cfgJson().length > 250) {
-      req.error(-1, "too many timers");
-      return;
-    }
     saveCfg();
     pubSoon(30);
   }
