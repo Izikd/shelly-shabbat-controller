@@ -556,6 +556,25 @@ useRef("pt");
   d.scripts[2].code = Buffer.from(DATES.pt.trimEnd());
   d.call("ShabbatSet", { reload: true });
   check(vm.runInContext("TBL_N", d.sb) === 0, "no trailing newline -> no windows");
+  // a skipped window stays skipped when the place changes (it is known by its start time)
+  d.scripts[2].code = Buffer.from(DATES.pt);
+  d.call("ShabbatSet", { reload: true });
+  g = d.call("ShabbatSet", { skip: true }).d;
+  const ptS = g.cfg.skip;
+  check(ptS === g.st.cur.s && d.relay === false, "skipped the current window");
+  d.scripts[2].code = Buffer.from(DATES.ny);
+  g = d.call("ShabbatSet", { reload: true }).d;
+  const nyS = REF.ny.w.find((x) => x[1] > ptS)[0];
+  check(nyS !== ptS && g.cfg.skip === nyS, "the skip moved to New York's window: " + g.cfg.skip);
+  check(JSON.parse(d.kvs.shabbat_elev_cfg).s === nyS, "and was saved");
+  // a skip asked for while the table is read is refused (there are no windows to skip then)
+  let busy = null;
+  d.rpc.ShabbatSet({ result() {}, error() {} }, { reload: true });
+  d.rpc.ShabbatSet({ result() {}, error: (c, m) => (busy = m) }, { skip: false });
+  d.flush();
+  check(/^busy/.test(busy || ""), "skip during the read: " + busy);
+  check(d.call("ShabbatGet", {}).d.cfg.skip === nyS, "the skip is kept");
+  d.call("ShabbatSet", { skip: false });
   // the relay is left alone while the table is read (no tick acts meanwhile)
   d.scripts[2].code = Buffer.from(DATES.pt);
   d.call("ShabbatSet", { reload: true });

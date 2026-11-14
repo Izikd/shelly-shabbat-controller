@@ -597,6 +597,11 @@ function doSet(req, params) {
   // the changes go into a copy: settings that are refused must not stay in use
   let old = cfg;
   let changed = false;
+  // no windows while the table is read: a skip set now would be no skip at all
+  if (datesBusy && params.skip !== undefined) {
+    req.error(-1, "busy: reading the times, try again");
+    return;
+  }
   if (params.timers !== undefined) {
     // new timers replace the repeats too (the repeats belong to the timers by position)
     let rl = params.reps === undefined ? [] : params.reps;
@@ -1196,6 +1201,14 @@ function datesDone() {
   }
   for (let i = 0; i < datesReq.length; i++) replyQ.push(datesReq[i]);
   datesReq = [];
+  // a skipped window is known by its start, which another place has at another time: it
+  // is the window that ends after the old start and starts within a day of it
+  let w = null;
+  if (cfg.s) w = getWin(findWin(cfg.s));
+  if (w && w.s !== cfg.s && w.s < cfg.s + 86400) {
+    cfg.s = w.s;
+    saveCfg();
+  }
   pubSoon(30);
   kickTick();
 }
