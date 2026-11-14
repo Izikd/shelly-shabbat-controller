@@ -141,7 +141,8 @@ async function readJson(req) {
   const len = +(req.headers.get("Content-Length") || 0);
   if (len > LIMITS.body) return { err: "too large" };
   const text = await req.text();
-  if (text.length > LIMITS.body) return { err: "too large" };
+  // bytes, not characters: a name in Hebrew is two bytes a letter
+  if (new TextEncoder().encode(text).length > LIMITS.body) return { err: "too large" };
   try {
     return { v: JSON.parse(text) };
   } catch (e) {
@@ -157,23 +158,24 @@ async function register(req, env, now) {
   if (name === null) return fail(400, "bad name");
   const day = Math.floor(now / 86400);
   const ip = (await sha256("reg:" + (req.headers.get("CF-Connecting-IP") || "-"))).slice(0, 16);
-  const mine = await env.DB.prepare("SELECT n FROM regs WHERE ip = ? AND day = ?")
-    .bind(ip, day)
+  // counted first, in one statement, so that requests arriving together cannot all pass a
+  // check made before any of them is counted. Over the limit the count stops (no row comes
+  // back), so one client cannot use up the limit of everyone together.
+  const mine = await env.DB.prepare(
+    "INSERT INTO regs (ip, day, n) VALUES (?, ?, 1) " +
+      "ON CONFLICT (ip, day) DO UPDATE SET n = n + 1 WHERE n < ? RETURNING n"
+  )
+    .bind(ip, day, LIMITS.regPerIpDay)
     .first();
-  if (mine && mine.n >= LIMITS.regPerIpDay) return fail(429, "too many new pages today");
+  if (!mine) return fail(429, "too many new pages today");
   const all = await env.DB.prepare("SELECT COALESCE(SUM(n), 0) AS n FROM regs WHERE day = ?")
     .bind(day)
     .first();
-  if (all && all.n >= LIMITS.regPerDay) return fail(429, "service busy, try tomorrow");
+  if (all && all.n > LIMITS.regPerDay) return fail(429, "service busy, try tomorrow");
   const id = randomString(10, ID_CHARS);
   const key = randomString(24, KEY_CHARS);
   await env.DB.prepare("INSERT INTO pages (id, key_hash, name, created) VALUES (?, ?, ?, ?)")
     .bind(id, await sha256(key), name, now)
-    .run();
-  await env.DB.prepare(
-    "INSERT INTO regs (ip, day, n) VALUES (?, ?, 1) ON CONFLICT (ip, day) DO UPDATE SET n = n + 1"
-  )
-    .bind(ip, day)
     .run();
   return api(201, { id, key, url: new URL(req.url).origin + "/s/" + id });
 }

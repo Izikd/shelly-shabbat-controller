@@ -154,6 +154,12 @@ check(/Fri 06\/11 09:30 → Sat 07\/11 10:25/.test(nyHtml), "page in the device'
 now += 30;
 r = await call("PUT", "/api/s/" + id, { body: "x".repeat(LIMITS.body + 1), key });
 check(r.status === 400, "too large: " + r.status);
+// the limit is in bytes: Hebrew letters are two each
+r = await call("PUT", "/api/s/" + id + "/name", {
+  body: '{"name":"' + "\u05d0".repeat(LIMITS.body / 2) + '"}',
+  key
+});
+check(r.status === 400 && /too large/.test(r.text), "too large in bytes: " + r.text);
 r = await call("PUT", "/api/s/" + id, { body: { ...sched, v: 2 }, key });
 check(r.status === 400 && /bad schedule/.test(r.text), "invalid schedule rejected");
 
@@ -238,6 +244,19 @@ r = await call("POST", "/api/register", {
   headers: { "CF-Connecting-IP": "198.51.100.8" }
 });
 check(r.status === 201, "other address still allowed");
+// requests arriving together are all counted: no more than the limit get a page
+const burst = await Promise.all(
+  Array.from({ length: LIMITS.regPerIpDay + 5 }, () =>
+    call("POST", "/api/register", { body: {}, headers: { "CF-Connecting-IP": "198.51.100.9" } })
+  )
+);
+check(
+  burst.filter((x) => x.status === 201).length === LIMITS.regPerIpDay,
+  "a burst gets " + LIMITS.regPerIpDay + " pages: " + burst.map((x) => x.status).join(" ")
+);
+// refused requests do not use up the limit of everyone together
+const n9 = env.DB.raw.prepare("SELECT n FROM regs WHERE n > ?").all(LIMITS.regPerIpDay);
+check(n9.length === 0, "the count stops at the limit");
 
 // ---------- cleanup ----------
 const a = (
