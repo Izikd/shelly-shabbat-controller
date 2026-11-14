@@ -348,7 +348,9 @@ function serve(req, res, u) {
       }
       if (u.pathname === "/mock/jobs") return json(res, 200, { jobs: dev.jobs, log: dev.jobs.log });
       if (u.pathname === "/rpc/Script.Create") {
-        const id = Math.max(...Object.keys(scripts).map(Number)) + 1;
+        // the lowest free id, as on the device (a deleted script's id is given out again)
+        let id = 1;
+        while (scripts[id]) id++;
         scripts[id] = {
           name: params.name || "script_" + id,
           code: Buffer.alloc(0),

@@ -49,6 +49,9 @@ the device) or *design* (a rule we chose). Recheck on new firmware or other mode
   schedule (`Schedule.Create`, `"0 17 * * * *"`) calls `Script.Start` on the controller every
   hour (a no-op while it runs). The settings page makes it when timers or the location are
   saved, and the page's update and `tools/deploy.py` turn it off while they replace the
-  controller (it could start a half-uploaded one) (*design*, not yet seen on hardware; the
-  mock implements `Schedule.List` / `Create` / `Update` as documented). A crash on every
+  controller (it could start a half-uploaded one). On the Pro 1 (fw 2.0.3, 2026-11-14) the
+  device stored the job exactly as sent (`Schedule.List`: method `Script.Start`, `params.id`),
+  and with the timespec set to every minute a stopped controller was running again 37 s
+  later and answered `ShabbatGet` (*observed*). The mock implements `Schedule.List` / `Create`
+  / `Update` as documented. A crash on every
   start would repeat hourly; watch for it after risky changes.

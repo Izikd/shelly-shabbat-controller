@@ -11,7 +11,8 @@ the device) or *design* (a rule we chose). Recheck on new firmware or other mode
   until then.
 - KVS values are limited (~253 chars per value in practice); the timer config and the 15-entry
   log are sized to fit (`test/sim.js` checks). Repeats (`r`, ~12 characters each) share the
-  timers' value: 12 plain timers or 4 timers with 3 repeats fit; 12 repeating timers do not,
+  timers' value: 12 plain timers or 4 timers with 3 repeats fit the KVS value (but more than about 8 timers do
+  not fit the script's memory, `memory.md`); 12 repeating timers do not,
   and `ShabbatSet` answers "too many timers".
 - Every `KVS.Set` is a write to the device's flash. The relay log is therefore saved at most
   once in 30 minutes (`CFG.logTicks`; the first change after a quiet half hour at once, later

@@ -23,8 +23,11 @@ the device) or *design* (a rule we chose). Recheck on new firmware or other mode
 - **`Script.Delete` answers `null`** (*doc*): not a JSON object, so the page's request
   helper takes it for a lost reply; the location save accepts that answer. `Script.SetConfig
   {config: {name}}` renames a script (*doc*). The location save uses both to put a checked
-  copy in place of `shabbat_dates` (neither yet tried on hardware; the mock answers as the
-  docs say).
+  copy in place of `shabbat_dates`: on the Pro 1 (fw 2.0.3, 2026-11-14) the page saved a new
+  location this way (the copy became `shabbat_dates`, the old one was gone), and a save cut
+  off after the first piece left the old times in use and the copy aside (*observed*). A
+  deleted script's id is given to the next `Script.Create` (*observed*: the cut-off copy got
+  the old table's id 3).
 - **`Script.Start` of code that does not parse** answers HTTP 500
   `{code: -2, message: "syntax_error"}` and the script stays stopped (*observed*); the page
   treats that as a failure and puts the old code back. While a started controller is still

@@ -237,3 +237,34 @@ per round trip). Entries are dated, newest last; keep the method so a test can b
   request).
 - Cache the page code in the browser (e.g. keyed by the version stamp) to skip the code reads
   on repeat visits (costs ~250 bytes of loader text in the controller's memory).
+
+## 2026-11-14 - The review fixes on the Pro 1; how many timers fit
+- **Question**: do the review fixes (52c9044) work on the device, and what do they cost?
+- **Method**: Pro 1, fw 2.0.3, between Shabbatot. Device backed up (scripts, KVS, schedules),
+  the branch build installed with `tools/deploy.py --build`, each fix driven through its RPCs
+  and, for the location, the real settings page in Playwright (hebcal served from the pinned
+  devDependency files: this session's network blocks the CDNs; the page checked their
+  hashes). `mem_peak` after a fresh `Script.Start`. Then the backup restored and main 4eecb84
+  reinstalled.
+- **Result**:
+  - Boot: main 17,878 / 21,280 (`mem_used` / `mem_peak`), the review build 17,654 / 20,958
+    (no default timers); `ShabbatGet`, `ShabbatSet`, a 3-window forecast and a publish left
+    the peak at ~21,100.
+  - Watchdog: `deploy.py` made the schedule; set to every minute, it started a stopped
+    controller again after 37 s.
+  - Settings too long to save (12 repeating timers, with `skip` or `auto` in the same
+    request): refused whole, nothing changed. `http://` publishing refused, settings kept.
+  - Relay log: of four relay changes in a row (test time), the first was saved at once and
+    the other three stayed in memory only.
+  - A settings change while a publish was in flight (`busy` seen): the next send was set 31 s
+    after it, and went out 44 s after the first (it used to be a day).
+  - Stockholm (59.33, 18.06) saved from the page: 275 windows, havdalah by minutes (`"hm":72`),
+    the longest window 73.6 h, June 2027 has a window every week; the skipped next window
+    moved to Stockholm's. A save cut off after the first piece left Stockholm in place.
+  - No saved settings: no timers, nothing switched on, also with test time inside a window.
+  - **Found**: 12 clock timers ran the controller out of memory on main as well; the limit is
+    about 8 (numbers in `../device/memory.md`). A page load peaks at ~24 KB; once, with a
+    publish following a skip, it ran out of memory.
+- **Decision**: the fixes work as intended. The timer limit needs a change of its own (the
+  page allows 12); proposed to the owner. The device is back on main 4eecb84, original
+  settings and times, no schedules.
