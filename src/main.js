@@ -738,6 +738,7 @@ function onRpcPub(req, params) {
 let pub = null; // {u: service URL, i: page id, k: write key}
 let pubBusy = false;
 let pubDue = 0; // UTC s of the next send (0 = once the clock is synced)
+let pubRe = 0; // settings changed during a send: send again this many s after it
 let pubFails = 0;
 let pubOk = 0; // UTC s of the last successful send
 let pubErr = ""; // why the last send failed
@@ -765,6 +766,7 @@ function validPub(p) {
 }
 
 function pubSoon(sec) {
+  if (pubBusy) pubRe = sec; // what is on its way is already old: onPubSent sends again
   let t = realNow();
   let d = t ? t + sec : 0;
   if (d < pubDue) pubDue = d;
@@ -847,6 +849,8 @@ function pubSend() {
 
 function onPubSent(res, err, msg) {
   pubBusy = false;
+  let re = pubRe;
+  pubRe = 0;
   let t = realNow();
   let code = res && res.code ? res.code : 0;
   if (!err && code >= 200 && code < 300) {
@@ -855,6 +859,7 @@ function onPubSent(res, err, msg) {
     pubFails = 0;
     // daily, at a time that differs between devices
     pubDue = t + 82800 + Math.floor(Math.random() * 7200);
+    if (re) pubDue = t + re;
     return;
   }
   pubErr = err ? "" + msg : "HTTP " + code;

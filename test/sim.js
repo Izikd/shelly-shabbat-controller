@@ -142,7 +142,10 @@ function makeDevice(opts) {
             dev.dels++;
           } else err = -1;
         } else throw new Error("unexpected call " + method);
-        if (cb) dev.pending.push(() => cb(res, err, err ? "err" : ""));
+        // dev.httpHold: the reply of an HTTP.Request waits until the test calls dev.held()
+        if (cb && method === "HTTP.Request" && dev.httpHold)
+          dev.held = () => cb(res, err, err ? "err" : "");
+        else if (cb) dev.pending.push(() => cb(res, err, err ? "err" : ""));
       },
       getCurrentScriptId: () => 1
     },
@@ -1095,6 +1098,23 @@ useRef("pt");
   dev.call("ShabbatPub", { send: true });
   r = dev.call("ShabbatPub", {});
   check(dev.reqs.length === 5 && r.d.err === "" && r.d.ok === t0 + 301, "send now");
+  // a change while a send is on its way is sent after it, not a day later
+  dev.httpHold = true;
+  dev.call("ShabbatPub", { send: true });
+  check(dev.reqs.length === 6 && dev.call("ShabbatPub", {}).d.busy, "a send on its way");
+  dev.call("ShabbatSet", { skip: true });
+  dev.httpHold = false;
+  dev.held();
+  dev.flush();
+  r = dev.call("ShabbatPub", {});
+  check(r.d.due === dev.now + 30, "change during a send: sent again in 30 s, due " + r.d.due);
+  dev.now += 45;
+  dev.tick();
+  check(dev.reqs.length === 7 && JSON.parse(dev.reqs[6].body).w[0].x === 1, "the change was sent");
+  check(dev.call("ShabbatPub", {}).d.due >= dev.now + 82800, "then daily again");
+  dev.call("ShabbatSet", { skip: false });
+  dev.now += 45;
+  dev.tick();
   // reboot keeps the settings and sends once the clock is synced
   const dev2 = makeDevice({ kvs: dev.kvs, now: 0 });
   dev2.tick();
@@ -1107,7 +1127,7 @@ useRef("pt");
   check(r.ok && !r.d.on && !("shabbat_pub" in dev.kvs), "stopped, KVS key removed");
   dev.now += 2 * 86400;
   dev.tick();
-  check(dev.reqs.length === 5, "nothing sent after stop");
+  check(dev.reqs.length === 8, "nothing sent after stop");
   // 12 worst-case timers still fit one request
   const tl = Array.from({ length: 12 }, (_, i) => [1, i * 120, 30, 0, 0, 1]);
   const dev3 = makeDevice({
