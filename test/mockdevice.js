@@ -98,7 +98,7 @@ const makeSandbox = () => ({
       if (t === "sys") return { unixtime: now, utc_offset: 7200 };
       if (t === "switch")
         return { output: dev.relay, source: dev.src || "init", tag: dev.tag || null };
-      return { mem_used: 1, mem_peak: 1, mem_free: 1 };
+      return { mem_used: 18000, mem_peak: 20000, mem_free: 7000 }; // as on the device
     },
     getComponentConfig() {
       return null;

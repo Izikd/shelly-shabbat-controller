@@ -128,7 +128,7 @@ Each has a reason in `docs/device/` and `docs/experiments/`.
   the device about twice its size in RAM and has rebooted it.
 - **At most 2 requests to the device in flight, retried when refused**: the device has only a
   few connections, shared by every open page, app and tab, and refuses the rest ("Failed to
-  fetch" on the LAN, a 502 page through a tunnel). The loader (`UI_B` in `src/main.js`) and
+  fetch" on the LAN, a 502 page through a tunnel). The loader (`UI_PAGE` in `src/main.js`) and
   the page (`dev` in `src/ui.js`) queue their requests; only requests that are safe to repeat
   are retried (never a `PutCode` append). The mock refuses beyond 3 at once. The page
   polls only while visible (`document.hidden`); each tab asks only for what it shows (no

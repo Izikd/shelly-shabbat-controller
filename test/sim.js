@@ -91,7 +91,9 @@ function makeDevice(opts) {
       getComponentStatus(type, id) {
         if (type === "sys") return { unixtime: dev.now, utc_offset: 7200, uptime: 100 };
         if (type === "switch") return { id: 0, output: dev.relay, source: dev.src, tag: dev.tag };
-        if (type === "script") return { id: 1, mem_used: 1, mem_peak: 1, mem_free: 1 };
+        // free memory as on the device with room to spare; tests lower dev.memFree
+        if (type === "script")
+          return { id: 1, mem_used: 18000, mem_peak: 20000, mem_free: dev.memFree || 7000 };
         return null;
       },
       getComponentConfig(type, id) {
@@ -1191,7 +1193,7 @@ useRef("pt");
   check(dev3.reqs.length === 1, "12 timers: sent");
   // 12 timers on every day of the three-day Yom Tov windows of Tishrei 5787 abroad: more
   // than 24 ON times in a window (the service takes 48, test/service_test.mjs), and the body
-  // stays within the service's 4 KB by sending fewer windows
+  // stays within the service's 4 KB (fewer windows when needed)
   {
     const many = Array.from({ length: 12 }, (_, i) => [1, i * 115, 5, 0, 0, 1]);
     const d = makeDevice({
@@ -1207,7 +1209,7 @@ useRef("pt");
       bb = JSON.parse(body);
     const most = Math.max(...bb.w.map((w) => w.on.length));
     check(most > 24 && most <= 48, "ON times in the longest window: " + most);
-    check(body.length <= 4096 && bb.w.length >= 3 && bb.w.length < 6, "body " + body.length);
+    check(body.length <= 3900 && bb.w.length >= 3, "body " + body.length);
     console.log("   many ON times:", bb.w.map((w) => w.on.length).join(" "), body.length);
   }
   // repeating timers: v 2, the repeats in short
@@ -1253,10 +1255,13 @@ useRef("pt");
   const dev = makeDevice();
   const r = dev.http("ui");
   check(
-    r.code === 200 && /window\.SE_ID=1;/.test(r.body) && /shabbat_ui/.test(r.body),
+    r.code === 200 && /shabbat_ui/.test(r.body) && /location\.pathname/.test(r.body),
     "ui loader page"
   );
-  check(/window\.SE_UI=2;/.test(r.body), "page script id looked up at boot (SE_UI=2)");
+  // one fixed string, not assembled per request (~1.6 KB at the peak on the device)
+  check(r.body === dev.http("ui").body && r.body === vm.runInContext("UI_PAGE", dev.sb), "fixed");
+  check(!/\\/.test(r.body), "no escapes in the loader (the engine rejects some)");
+  check(dev.call("ShabbatGet", {}).d.ui === 2, "page script id looked up at boot (ui 2)");
   console.log("T5 UI loader:", r.body.length, "bytes");
 }
 

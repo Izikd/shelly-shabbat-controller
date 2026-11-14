@@ -50,6 +50,8 @@ let CFG = {
   pubN: 6, // windows sent to the schedule service
   tag: "shabbat", // Switch.Set tag: tells our commands from manual ones
   maxTimers: 12,
+  memPreview: 4000, // free script memory needed for one more forecast window (bytes)
+  memPublish: 2000, // ... for one more window of the published schedule, plus 3 x the body
   debug: false,
   diag: false // staged boot (1 s per step) + memory logs: set true in a local build to debug
   // a crash during boot. CFG.debug can be switched at runtime instead (docs/device/engine.md).
@@ -157,72 +159,130 @@ function findWin(t) {
 }
 
 // ---------------- Timer intervals ----------------
-// Each start of an enabled timer in window w is a block [a, b, P, D, label]: from a to b,
-// on for D s every P s (P = 0: once, a timer that does not repeat; l = the 1-based timer
-// number). The relay's ON times are worked out from the blocks on the fly, never listed:
-// a repeat can have ~300 pulses a window (script memory). Kept small and flat: on the device
-// a deep path with large functions overflowed the stack (docs/device/engine.md).
-// Results in globals, so that no object is made per pulse.
+// Each start of an enabled timer in window w is a block: from kA to kB, on for kD s every
+// kP s (kP = 0: once, a timer that does not repeat), label kL (the 1-based timer number, a
+// number: nothing is allocated per block, see segAt).
+// The blocks are never listed: nextBlk walks them one at a time into these globals (a list of
+// 12 clock timers' blocks, 3 a window each, ran the script out of memory on the device,
+// docs/device/memory.md), and the relay's ON times are worked out from them on the fly (a
+// repeat can have ~300 pulses a window). Kept small and flat: on the device a deep path
+// with large functions overflowed the stack (docs/device/engine.md).
+// Results in globals, so that no object is made per block or per pulse.
 let pS = 0,
   pE = 0; // pulseAt: the pulse (pE = 0: none)
 let sS = 0,
   sE = 0,
-  sL = ""; // segAt / take: the ON stretch (sE = 0: none)
+  sM = 0; // segAt / take: the ON stretch (sE = 0: none), its timers as bits (1 << label)
+let kA = 0,
+  kB = 0,
+  kP = 0,
+  kD = 0,
+  kL = 0; // nextBlk: the block
+let kLen = 0,
+  kOn = 0; // nextBlk: the timer's length (s) and enabled
+let cW = null,
+  cTl = null,
+  cRl = null; // the window, timers and repeats nextBlk walks
+let cI = 0,
+  cD = -1,
+  cD0 = 0,
+  cD1 = 0; // nextBlk: timer, day (-1: timer not started), first and last local day
+let cOff = 0,
+  cFast = false; // the window's UTC offset (s), and whether it holds for all of it
 
-// The blocks of window w for timers tl and repeats rl
-function blocks(w, tl, rl) {
-  let out = [];
-  let d0 = Math.floor((w.s + tzOffset(w.s)) / 86400);
-  let d1 = Math.floor((w.e + tzOffset(w.e)) / 86400);
-  for (let i = 0; i < tl.length; i++) {
-    let v = tl[i];
-    // [enabled, length (min), period (min)]; no ternaries with sums or calls in them: the
-    // device's parser rejected one (docs/device/engine.md)
-    // flat conditions only: nested ones crashed the device (docs/device/engine.md)
-    let r = [v[5], v[2], 0];
-    if (rl.length > i && rl[i]) r = [rl[i][2], rl[i][1], rl[i][0]];
-    if (!r[0]) continue;
-    if (v[2] <= 0) continue;
-    if (v[3] === 1 && w.k === 2) continue;
-    if (v[3] === 2 && w.k === 1) continue;
-    let lo = d1;
-    if (v[0] === 1) lo = d0 - 1;
-    for (let d = lo; d <= d1; d++) {
-      if (v[0] === 1 && v[4] === 1 && d - d0 > 1) continue;
-      if (v[0] === 1 && v[4] === 2 && d !== d1) continue;
-      let a = w.s + v[1] * 60;
-      if (v[0] === 2) a = w.e + v[1] * 60;
-      if (v[0] === 1) a = localToUtc(d * 86400 + v[1] * 60);
-      out.push([a, a + r[1] * 60, r[2] * 60, v[2] * 60, "" + (i + 1)]);
-    }
-  }
-  return out;
+// Start walking the blocks of window w for timers tl and repeats rl. The device interprets
+// the code as text, every call, so the walk is kept cheap: one UTC offset for the window (cOff)
+// unless the clocks change near it (cFast 0: localToUtc for each clock timer), blocks wholly
+// outside the window dropped at once, and the per-timer setup in its own small function.
+function blkStart(w, tl, rl) {
+  cW = w;
+  cTl = tl;
+  cRl = rl;
+  cI = 0;
+  cD = -1;
+  cD0 = Math.floor((w.s + tzOffset(w.s)) / 86400);
+  cD1 = Math.floor((w.e + tzOffset(w.e)) / 86400);
+  // from the local day before the window to the day after it
+  cOff = tzOffset(w.s - 172800);
+  cFast = cOff === tzOffset(w.e + 86400);
 }
 
-// The pulse of block k, clipped to window w, that contains x or starts after it: pS..pE
-function pulseAt(w, k, x) {
+// Timer v's setup: [enabled, length, period] of the timer, or of its repeat, its duration
+// and label, and its first day (past the last: no blocks). Flat conditions only: nested ones
+// crashed the device (docs/device/engine.md)
+function blkTimer(v) {
+  kOn = v[5];
+  kLen = v[2] * 60;
+  kP = 0;
+  if (cRl.length > cI && cRl[cI]) {
+    kOn = cRl[cI][2];
+    kLen = cRl[cI][1] * 60;
+    kP = cRl[cI][0] * 60;
+  }
+  kD = v[2] * 60;
+  kL = cI + 1;
+  cD = cD1;
+  if (v[0] === 1) cD = cD0 - 1;
+  if (!kOn || v[2] <= 0) cD = cD1 + 1;
+  if (v[3] === 1 && cW.k === 2) cD = cD1 + 1;
+  if (v[3] === 2 && cW.k === 1) cD = cD1 + 1;
+}
+
+// The next block into kA..kL; false when there are no more. A clock timer has one a day,
+// from the day before the window (it may reach into it) to its last day; the others one.
+// No parameters and few variables: it is on the deepest paths.
+function nextBlk() {
+  while (cI < cTl.length) {
+    let v = cTl[cI];
+    if (cD < 0) blkTimer(v);
+    if (cD > cD1) {
+      cI++;
+      cD = -1;
+      continue;
+    }
+    let d = cD;
+    cD++;
+    if (v[0] === 1 && v[4] === 1 && d - cD0 > 1) continue;
+    if (v[0] === 1 && v[4] === 2 && d !== cD1) continue;
+    kA = cW.s + v[1] * 60;
+    if (v[0] === 2) kA = cW.e + v[1] * 60;
+    if (v[0] === 1) kA = d * 86400 + v[1] * 60 - cOff;
+    if (v[0] === 1 && !cFast) kA = localToUtc(d * 86400 + v[1] * 60);
+    kB = kA + kLen;
+    if (kB <= cW.s || kA >= cW.e) continue; // no pulse in the window
+    return true;
+  }
+  return false;
+}
+
+// The pulse of the block in kA..kD, clipped to window w, that contains x or starts after
+// it: pS..pE
+function pulseAt(w, x) {
   pE = 0;
-  let b = k[1];
+  let b = kB;
   if (b > w.e) b = w.e;
   let y = x;
-  if (y < k[0]) y = k[0];
+  if (y < kA) y = kA;
   if (y < w.s) y = w.s;
   if (y >= b) return;
-  let s = k[0];
+  let s = kA;
   let q = 0;
-  if (k[2]) q = Math.floor((y - k[0]) / k[2]);
-  s += q * k[2];
-  if (s + k[3] <= y) s += k[2];
-  if (!k[2] && s + k[3] <= y) return;
+  if (kP) q = Math.floor((y - kA) / kP);
+  s += q * kP;
+  if (s + kD <= y) s += kP;
+  if (!kP && s + kD <= y) return;
   if (s >= b) return;
-  pE = s + k[3];
+  pE = s + kD;
   if (pE > b) pE = b;
   pS = s;
   if (pS < w.s) pS = w.s;
 }
 
-// Adds a candidate interval (e > x) to the stretch sS..sE: one that contains x wins over
-// one that starts later; two that contain x, or start together, are merged
+// Adds a candidate interval (e > x) of timer l to the stretch sS..sE: one that contains x
+// wins over one that starts later; two that contain x, or start together, are merged. The
+// timers are bits in sM, not a string: segAt may call this thousands of times in one go, and
+// the engine frees nothing until it returns (a label string per call ran the script out of
+// memory on the device with 8 repeating timers)
 function take(s, e, l, x) {
   let a = s <= x;
   let b = sS <= x;
@@ -232,44 +292,59 @@ function take(s, e, l, x) {
   if (take1) {
     sS = s;
     sE = e;
-    sL = l;
+    sM = 1 << l;
     return;
   }
   if (a !== b) return;
   if (!a && s > sS) return;
   if (s < sS) sS = s;
   if (e > sE) sE = e;
-  if (("+" + sL + "+").indexOf("+" + l + "+") < 0) sL += "+" + l;
+  sM = sM | (1 << l);
 }
 
-// The ON stretch of window w (blocks bl) that contains x, else the next one: sS..sE, labels
-// sL (sE = 0: none), followed through every pulse that touches or overlaps its end
-function segAt(w, bl, x) {
+// The timers of sM as the page shows them: "1+3"
+function maskLabel() {
+  let out = "";
+  for (let i = 1; i <= CFG.maxTimers; i++) {
+    let bit = 1 << i;
+    if (!(sM & bit)) continue;
+    if (out.length) out += "+";
+    out += i;
+  }
+  return out;
+}
+
+// The ON stretch of window w (timers tl, repeats rl) that contains x, else the next one:
+// sS..sE, timers sM (sE = 0: none), followed through every pulse that touches or overlaps
+// its end
+function segAt(w, tl, rl, x) {
   sE = 0;
-  for (let i = 0; i < bl.length; i++) {
-    pulseAt(w, bl[i], x);
-    if (pE) take(pS, pE, bl[i][4], x);
+  blkStart(w, tl, rl);
+  while (nextBlk()) {
+    pulseAt(w, x);
+    if (pE) take(pS, pE, kL, x);
   }
   for (let n = 0; n < 100 && sE; n++) {
     let e = sE;
-    for (let i = 0; i < bl.length; i++) {
-      pulseAt(w, bl[i], e);
-      if (pE) take(pS, pE, bl[i][4], e);
+    blkStart(w, tl, rl);
+    while (nextBlk()) {
+      pulseAt(w, e);
+      if (pE) take(pS, pE, kL, e);
     }
     if (sE === e) return;
   }
 }
 
-// The merged ON times of the blocks that do not repeat, sorted, into out: [s, e, "1+3"]
-// (the forecast and the public page: one pass, no call per block; segAt would cost ~3 times
-// the calls, and the device is slow)
-function onceTimes(w, bl, out) {
-  for (let i = 0; i < bl.length; i++) {
-    let s = bl[i][0];
-    let e = bl[i][1];
+// The ON times of the blocks that do not repeat (walked from blkStart), clipped to window w,
+// sorted into out: [s, e, "1"] (the forecast and the public page; mergeOn joins them).
+// One pass, no call per block; segAt would cost ~3 times the calls, and the device is slow.
+function onceTimes(w, out) {
+  while (nextBlk()) {
+    let s = kA;
+    let e = kB;
     if (s < w.s) s = w.s;
     if (e > w.e) e = w.e;
-    if (bl[i][2] || e <= s) continue;
+    if (kP || e <= s) continue;
     // sorted insert by start (Array.sort is not available on Shelly)
     let j = out.length;
     out.push(null);
@@ -277,8 +352,12 @@ function onceTimes(w, bl, out) {
       out[j] = out[j - 1];
       j--;
     }
-    out[j] = [s, e, bl[i][4]];
+    out[j] = [s, e, "" + kL];
   }
+}
+
+// Joins the overlapping or touching ON times of out (sorted): [s, e, "1+3"]
+function mergeOn(out) {
   let n = 0;
   for (let i = 0; i < out.length; i++) {
     let x = out[i];
@@ -295,15 +374,15 @@ function onceTimes(w, bl, out) {
   while (out.length > n) out.pop();
 }
 
-// A repeat in short (the forecast, the public page): its first pulse's start in pS and its
-// last pulse's end in pE (pE = 0: no pulse in the window)
-function span(w, k) {
-  let b = k[1];
+// A repeat in short (the forecast, the public page), for the block in kA..kD: its first
+// pulse's start in pS and its last pulse's end in pE (pE = 0: no pulse in the window)
+function span(w) {
+  let b = kB;
   if (b > w.e) b = w.e;
-  let q = Math.floor((b - 1 - k[0]) / k[2]);
-  pulseAt(w, k, k[0] + q * k[2]);
+  let q = Math.floor((b - 1 - kA) / kP);
+  pulseAt(w, kA + q * kP);
   let e = pE;
-  pulseAt(w, k, k[0]);
+  pulseAt(w, kA);
   pE = e;
 }
 
@@ -488,6 +567,13 @@ function applyRelay(on, until, cause) {
   Shelly.call("Switch.Set", p, onSwitchSet);
 }
 
+// the tick's last answer, valid from cacheFrom until cacheUntil (UTC s, 0: none); cleared
+// when the timers, the skip, the test time or the table change
+let cacheFrom = 0,
+  cacheUntil = 0,
+  cacheOn = null,
+  cacheNext = null;
+
 function winInfo(w) {
   return w ? { t: w.title, k: w.k, s: w.s, e: w.e } : null;
 }
@@ -538,16 +624,28 @@ function tick() {
     );
   }
 
-  // Relay: first interval containing t, else the next one
-  let on = null,
+  // Relay: first interval containing t, else the next one. The answer holds until t reaches
+  // its end (on) or its start (next): until then the last one is used (the device needs ~1-3 s
+  // to work it out with many timers, and ticks come every 15 s)
+  let on = cacheOn,
+    upcoming = cacheNext;
+  if (t < cacheFrom || t >= cacheUntil) {
+    on = null;
     upcoming = null;
-  let pw = [cur, nxt, getWin(idx + (cur ? 2 : 1))];
-  for (let k = 0; k < 3 && !upcoming && !on; k++) {
-    if (!pw[k] || pw[k].s === cfg.s) continue; // skipped window
-    segAt(pw[k], blocks(pw[k], cfg.t, cfg.r), t);
-    if (!sE) continue;
-    if (sS <= t) on = [sS, sE, sL];
-    else upcoming = [sS, sE, sL];
+    let pw = [cur, nxt, getWin(idx + (cur ? 2 : 1))];
+    for (let k = 0; k < 3 && !upcoming && !on; k++) {
+      if (!pw[k] || pw[k].s === cfg.s) continue; // skipped window
+      segAt(pw[k], cfg.t, cfg.r, t);
+      if (!sE) continue;
+      if (sS <= t) on = [sS, sE, maskLabel()];
+      else upcoming = [sS, sE, maskLabel()];
+    }
+    cacheFrom = t;
+    cacheUntil = 0; // nothing found: worked out again next time
+    if (on) cacheUntil = on[1];
+    if (upcoming) cacheUntil = upcoming[0];
+    cacheOn = on;
+    cacheNext = upcoming;
   }
   status.on = on;
   status.nextOn = upcoming;
@@ -569,7 +667,8 @@ function snapshot() {
     st: status,
     log: lg,
     base: TBL_BASE,
-    did: datesId
+    did: datesId,
+    ui: uiId // the page script, for the loader
   };
 }
 
@@ -634,6 +733,7 @@ function doSet(req, params) {
     testTime = tt > 0 ? tt : 0;
     lastWanted = null;
   }
+  cacheUntil = 0; // the tick works it out afresh
   if (changed) {
     saveCfg();
     pubSoon(30);
@@ -664,6 +764,8 @@ function doPreview(req, params) {
     }
     tl = params.timers;
   }
+  let rep = 0;
+  for (let i = 0; i < rl.length; i++) if (rl[i] && rl[i][2]) rep = 1;
   let n = Math.floor(params.n || 6);
   if (n < 1) n = 1;
   if (n > 8) n = 8;
@@ -673,23 +775,29 @@ function doPreview(req, params) {
   for (let k = 0; k < n; k++) {
     let w = getWin(idx + k);
     if (!w) break;
+    // memory first: fewer windows, and more says the rest are still to come (with 6 repeating
+    // timers 3 windows ran the script out of memory on the device, docs/device/memory.md)
+    if (k && memFree() < CFG.memPreview) break;
     let o = { t: w.title, k: w.k, s: w.s, e: w.e, skip: w.s === cfg.s, on: [], rp: [] };
-    let bl = [];
-    if (!o.skip) bl = blocks(w, tl, rl);
-    onceTimes(w, bl, o.on);
-    for (let i = 0; i < bl.length; i++) {
-      if (!bl[i][2]) continue;
-      span(w, bl[i]);
-      if (pE) o.rp.push([pS, pE, bl[i][4], bl[i][2] / 60, bl[i][3] / 60]);
-    }
     out.push(o);
+    if (o.skip) continue;
+    blkStart(w, tl, rl);
+    onceTimes(w, o.on);
+    mergeOn(o.on);
+    blkStart(w, tl, rl);
+    if (!rep) cTl = []; // no repeat switched on: nothing to walk
+    while (nextBlk()) {
+      if (!kP) continue;
+      span(w);
+      if (pE) o.rp.push([pS, pE, "" + kL, kP / 60, kD / 60]);
+    }
   }
-  req.result({ w: out, now: t });
+  req.result({ w: out, now: t, more: idx + out.length < TBL_N });
 }
 
 // The forecast and the public page list a window's ON times as on: the merged ON times of
 // the timers that do not repeat [s, e, "1+3"], and rp: each repeat in short [first start,
-// last end, "2", every, duration (min)]. doPreview and pubBody loop over the blocks
+// last end, "2", every, duration (min)]. doPreview and pubBody walk the blocks (nextBlk)
 // themselves: one more frame on these paths overflowed the device's stack
 // (docs/device/engine.md).
 // RPC handlers are called deep inside the firmware's RPC machinery, where little
@@ -741,6 +849,13 @@ let pubRe = 0; // settings changed during a send: send again this many s after i
 let pubFails = 0;
 let pubOk = 0; // UTC s of the last successful send
 let pubErr = ""; // why the last send failed
+
+// free script memory (bytes), from the firmware
+function memFree() {
+  let s = Shelly.getComponentStatus("script", Shelly.getCurrentScriptId());
+  if (!s || typeof s.mem_free !== "number") return 100000;
+  return s.mem_free;
+}
 
 // the device clock, ignoring test time (the public page shows the real schedule)
 function realNow() {
@@ -796,40 +911,41 @@ function pubBody(t) {
   for (let n = 0; n < CFG.pubN; n++) {
     let win = getWin(idx + n);
     if (!win) break;
+    let x = win.s === cfg.s ? 1 : 0;
+    // the window's part on its own, added to the body once: appending every field to the
+    // whole body copied it ~150 times, and with 8 timers (6 repeating) that ran the script
+    // out of memory on the device (docs/device/memory.md)
+    let ws = '{"t":"' + win.title + '","k":' + win.k + ',"s":' + win.s + ',"e":' + win.e;
+    ws += ',"x":' + x + ',"on":[';
+    let on = [];
+    blkStart(win, cfg.t, cfg.r);
+    if (x) cTl = []; // skipped: no blocks
+    onceTimes(win, on);
+    mergeOn(on);
+    for (let i = 0; i < on.length; i++)
+      ws += (i ? "," : "") + "[" + on[i][0] + "," + on[i][1] + "]";
+    ws += "]";
+    if (v === 2) {
+      ws += ',"rp":[';
+      let c = 0;
+      blkStart(win, cfg.t, cfg.r);
+      if (x) cTl = []; // skipped: no blocks
+      while (nextBlk()) {
+        if (!kP) continue;
+        span(win);
+        if (!pE) continue;
+        ws += (c ? "," : "") + "[" + pS + "," + pE + "," + kP / 60 + "," + kD / 60 + "]";
+        c++;
+      }
+      ws += "]";
+    }
+    ws += "}";
     // the service takes 4 KB: a window with many ON times is up to ~1.6 KB (48 of them,
     // 12 timers on each day of a three-day Yom Tov), so fewer windows are sent then
-    if (out.length > 2400) break;
-    let x = win.s === cfg.s ? 1 : 0;
-    out += n ? "," : "";
-    out += '{"t":"' + win.title + '","k":' + win.k + ',"s":' + win.s + ',"e":' + win.e;
-    out += ',"x":' + x + ',"on":[';
-    let o = { on: [], rp: [] };
-    let bl = [];
-    if (!x) bl = blocks(win, cfg.t, cfg.r);
-    onceTimes(win, bl, o.on);
-    for (let i = 0; i < bl.length; i++) {
-      if (!bl[i][2]) continue;
-      span(win, bl[i]);
-      if (pE) o.rp.push([pS, pE, bl[i][4], bl[i][2] / 60, bl[i][3] / 60]);
-    }
-    for (let i = 0; i < o.on.length; i++)
-      out += (i ? "," : "") + "[" + o.on[i][0] + "," + o.on[i][1] + "]";
-    out += "]";
-    if (v === 2) out += ',"rp":[';
-    for (let i = 0; v === 2 && i < o.rp.length; i++) {
-      out +=
-        (i ? "," : "") +
-        "[" +
-        o.rp[i][0] +
-        "," +
-        o.rp[i][1] +
-        "," +
-        o.rp[i][3] +
-        "," +
-        o.rp[i][4] +
-        "]";
-    }
-    out += v === 2 ? "]}" : "}";
+    if (out.length + ws.length > 3900) break;
+    // and memory: adding to the body copies it (with 6 repeating timers it ran out of memory)
+    if (n && memFree() < CFG.memPublish + 3 * out.length) break;
+    out += (n ? "," : "") + ws;
   }
   return out + "]}";
 }
@@ -923,24 +1039,26 @@ function doPub(req, params) {
 // size in RAM at the peak (16 KB read: +35 KB), and one ~28 KB read rebooted it; 4 KB pieces
 // in parallel cost ~6-10 KB and load the 18 KB page in ~0.8 s instead of ~3 s one by one.
 // The built scripts are ASCII, so byte offsets are character offsets.
-let UI_A =
-  // language-neutral: the page code sets lang, dir and title (Hebrew or English)
-  '<!doctype html><html><head><meta charset="utf-8">' +
-  '<meta name="viewport" content="width=device-width,initial-scale=1"><title>Shabbat</title></head>' +
-  '<body style="font-family:system-ui,sans-serif"><div id="app">...</div><script>window.SE_ID=';
-// Page = UI_A + <this script id> + ";window.SE_UI=" + <shabbat_ui id, -1 if unknown> + UI_B,
-// assembled per request: keeping the assembled copy too cost ~1.4 KB of script memory.
-// The loader starts the status request (window.SE_FIRST, used by the page's first refresh)
-// first, then asks for the first 7 pieces (28 KB, the whole page) and any rest; reads past
-// the end return no data. With no known id, or code that is not shabbat_ui, it looks the
-// id up.
+// The page is one fixed string, sent as it is: assembling it per request with this script's
+// id and the page script's id cost ~1.6 KB at the peak on every load (measured on the device;
+// with 12 timers a page load and a forecast at once ran the script out of memory). So the
+// loader takes this script's id from its own address (/script/<id>/ui) and the page script's
+// id from the status request it makes first (ShabbatGet's ui, window.SE_FIRST, also used by
+// the page's first refresh), then asks for the first 7 pieces (28 KB, the whole page) and any
+// rest; reads past the end return no data. With no known id, or code that is not shabbat_ui,
+// it looks the id up.
 // The device accepts only a few connections at a time, shared by every open page, app and
 // tab: a burst of 7 requests failed with "Failed to fetch" (502 through a tunnel) while other
 // windows were open (docs/device/network.md). So the loader keeps at most 2 requests in flight
 // (J queues the rest) and retries a request up to 3 times when it fails or the answer is not
 // the device's JSON.
-let UI_B =
-  ";(async function(){try{let id=window.SE_ID,ui=window.SE_UI,A=0,Q=[];" +
+let UI_PAGE =
+  // language-neutral: the page code sets lang, dir and title (Hebrew or English)
+  '<!doctype html><html><head><meta charset="utf-8">' +
+  '<meta name="viewport" content="width=device-width,initial-scale=1"><title>Shabbat</title></head>' +
+  '<body style="font-family:system-ui,sans-serif"><div id="app">...</div><script>' +
+  "(async function(){try{let id=parseInt(location.pathname.split('/script/')[1]),A=0,Q=[];" +
+  "window.SE_ID=id;" +
   "let N=function(){if(A<2&&Q.length){A++;Q.shift()()}};" +
   "let J=function(u,o){return new Promise(function(ok,no){Q.push(async function(){" +
   "for(let a=0;;a++){try{let r=await fetch(u,o),t=await r.text();" +
@@ -954,6 +1072,7 @@ let UI_B =
   'let n=r[0].data.length+r[0].left,c="";for(let x of r)c+=x.data||"";' +
   "let o=c.length;while(o<n){let b=[];for(let i=0;i<4&&o<n;i++,o+=4096)b.push(g(u,o));for(let x of await Promise.all(b))c+=x.data;}" +
   'if(c.length!==n)throw new Error("incomplete code");return c};' +
+  "let f=await window.SE_FIRST.catch(function(){return {}}),ui=f.ui>=0?f.ui:-1;" +
   "let c=ui>=0?await R(ui):null;" +
   'if(!c){let l=await J("/rpc/Script.List"),u=l.scripts.find(function(s){return s.name.indexOf("shabbat_ui")===0});' +
   'if(!u)throw new Error("script shabbat_ui not found");c=await R(u.id);if(!c)throw new Error("shabbat_ui unreadable");}' +
@@ -969,7 +1088,7 @@ function onUi(req, res) {
     ["Content-Type", "text/html; charset=utf-8"],
     ["Cache-Control", "no-store"]
   ];
-  res.body = UI_A + Shelly.getCurrentScriptId() + ";window.SE_UI=" + uiId + UI_B;
+  res.body = UI_PAGE;
   res.send();
 }
 
@@ -997,6 +1116,9 @@ let BOOT = [
       console.log("No saved timers");
     }
     if (c && c.r && validTimers(c.t) && validReps(c.r, c.t)) cfg.r = c.r;
+    // let go of it: after the next save it would keep the old timers in memory (~1.4 KB with
+    // 12, measured on the device)
+    bootLoaded = null;
   },
   function () {
     HTTPServer.registerEndpoint("ui", onUi);
@@ -1172,6 +1294,7 @@ function onDatesW(res, err) {
 }
 
 function datesEnd() {
+  cacheUntil = 0;
   if (TBL.length === 0) datesOk = false;
   if (TBL.length % 8 !== 0) datesOk = false;
   if (TBL.indexOf(datesNl) >= 0) datesOk = false;
