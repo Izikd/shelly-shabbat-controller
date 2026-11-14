@@ -268,3 +268,44 @@ per round trip). Entries are dated, newest last; keep the method so a test can b
 - **Decision**: the fixes work as intended. The timer limit needs a change of its own (the
   page allows 12); proposed to the owner. The device is back on main 4eecb84, original
   settings and times, no schedules.
+
+## 2026-11-14 - 12 timers within the controller's memory
+- **Question**: more than ~8 timers ran the controller out of memory (entry above). Can 12
+  fit, without making the device slower?
+- **Method**: Pro 1, fw 2.0.3, Saturday night (no window near). Local builds of the session
+  branch with `tools/deploy.py`; settings written to KVS and the script restarted to reset
+  `mem_peak`; publishing off unless noted. Configurations: 4 plain timers, 12 clock timers
+  (every day, 2 h), 3 and 6 repeating timers plus 2 plain. Times are RPC round trips
+  through the tunnel (~0.5-0.8 s of each). Then the real page in Playwright with 12 timers.
+  The device was put back on main 4eecb84 with its own settings afterwards.
+- **Result**:
+  - Blocks walked one at a time instead of listed: 12 clock timers boot at 22,386 (main: out
+    of memory); forecast of 3 windows 22,638. But slower, since every pass recomputes the
+    blocks: tick 6.4 s and 3-window forecast 14.7 s with 12 timers (4 plain: 2.4 s / 3.9 s;
+    main 2.2 s / 3.0 s).
+  - Labels as strings per block: 8 timers with repeats ran out of memory at the first tick
+    (up to 100 passes); as bits, they run.
+  - The loader assembled per request: +1.6 KB at the peak (20,958 -> 22,540); one fixed
+    string: no rise. The boot copy of the settings kept after a save: +1,360 bytes; released.
+  - Publish body appended field by field: 6 repeating timers ran out of memory at the first
+    publish (with publishing off they ran, peak 20,594); built a window at a time with a
+    memory check: sent, peak 22,582.
+  - Cheaper walk (blocks outside the window dropped, one UTC offset per window, the
+    per-timer setup in its own function): 12 timers tick 3.9 s, forecast 8.3 s.
+  - The tick's answer reused until it runs out: script CPU ~18-24% for the ~12 s after a
+    start, then 3-4% with the device's own 15-s ticks (4 plain, 12 clock, 6 repeats alike).
+  - Forecast memory per window, guard off: 4 plain +1,960 / +2,506 / +3,276 for 1 / 2 / 3
+    windows; 12 clock +2,772 / +3,108 / +3,444; 6 repeats +2,842 / +4,746 / out of memory
+    (main too). With the guard, the page's way (3 a request, while `more`): 4 plain 2
+    requests 5.4 s peak 22,022; 12 clock 2 requests 8.2 s peak 23,114; 6 repeats 6 requests of
+    1, 14.8 s, peak 22,568.
+  - The page with 12 timers: load 4.9-5.4 s, Timers tab forecast 6 windows (6 requests: the
+    draft timers in each leave room for 1), an edit followed, save; peak 24,220 (main with 4
+    timers: 24,164), no page errors. A guard margin of 1,500 instead of 800 gave the same.
+  - The test helper that re-stamps builds (`test/stamp.js`) missed the page's payload when
+    terser had escaped a `-->` in it (`--\x3e`, depending on the build's bytes), so the
+    update test failed on some builds; it decodes escapes now and fails when it finds no
+    payload.
+- **Decision**: keep all of it; margin 1,500. The page's forecast asks while `more`; the
+  page is 28,646 of 28,672 bytes (the watchdog's per-session flag dropped to make room;
+  builds vary by a few bytes with the stamp). The device is back on main.

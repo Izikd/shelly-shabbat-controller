@@ -635,25 +635,25 @@ if (typeof document !== "undefined")
       if (!S.cfg) return; // the timers are not known yet: load() asks once they are
       clearTimeout(pvTimer);
       pvTimer = setTimeout(function () {
-        // 6 windows in two requests of 3: 6 at once with repeating timers ran the controller out
-        // of memory (docs/device/memory.md)
+        // 6 windows, at most 3 a request: 6 at once with repeating timers ran the controller out
+        // of memory. It may send fewer when its memory is short; `more` says the rest are to
+        // come (docs/device/memory.md)
         var d = draft(),
-          my = ++pvSeq;
+          my = ++pvSeq,
+          all = [];
         d.n = 3;
-        rpc("ShabbatPreview", d, function (j) {
-          if (my !== pvSeq) return;
-          if (j.w.length < 3) {
-            S.prev = j.w;
-            render();
-            return;
-          }
-          d.from = j.w[2].e;
-          rpc("ShabbatPreview", d, function (k) {
+        (function ask() {
+          rpc("ShabbatPreview", d, function (j) {
             if (my !== pvSeq) return;
-            S.prev = j.w.concat(k.w);
+            all = all.concat(j.w);
+            if (j.more && all.length < 6) {
+              d.from = all[all.length - 1].e;
+              return ask();
+            }
+            S.prev = all;
             render();
           });
-        });
+        })();
       }, 250);
     }
     function refresh() {
@@ -2081,16 +2081,13 @@ if (typeof document !== "undefined")
     // Made by the page, not the controller (no script memory), when timers or the location are
     // saved; turned off while an update replaces the controller. Best effort: a device with
     // its 20 schedules taken has none.
-    var wdOk = false;
     function watchdog(on) {
-      if (on && wdOk) return Promise.resolve();
       return devRpc("Schedule.List")
         .then(function (l) {
           var j = (l.jobs || []).filter(function (x) {
             var c = (x.calls || [])[0];
             return c && c.method === "Script.Start" && c.params && c.params.id === ID;
           })[0];
-          wdOk = on;
           if (j)
             return j.enable === on ? null : devRpc("Schedule.Update", { id: j.id, enable: on });
           if (on)
@@ -2100,9 +2097,7 @@ if (typeof document !== "undefined")
               calls: [{ method: "Script.Start", params: { id: ID } }]
             });
         })
-        .catch(function () {
-          wdOk = false;
-        });
+        .catch(function () {});
     }
     // Upload in 1 KB pieces, like tools/deploy.py. A lost reply may or may not have applied its
     // piece, so an append is never re-sent blindly: the upload resumes from the length the

@@ -33,8 +33,15 @@ function unz85(s) {
 function restamp(code, version) {
   const re = /version \S+ /;
   let out = code.replace(re, "version " + version + " ");
-  // the page payload: the one long string literal in the unpacker (tools/build.mjs)
-  return out.replace(/"([0-3][^"\\]{2000,})"/, (all, text) => {
+  // the page payload: the one long string literal in the unpacker (tools/build.mjs). Terser
+  // escapes some sequences in it (-->, as --\x3e, for a script inline in HTML), depending on
+  // the compressed bytes: decode them, or the page would keep its old stamp
+  let found = false;
+  out = out.replace(/"([0-3](?:[^"\\]|\\.){2000,})"/, (all, lit) => {
+    found = true;
+    const text = lit
+      .replace(/\\x([0-9a-fA-F]{2})/g, (m, h) => String.fromCharCode(parseInt(h, 16)))
+      .replace(/\\(.)/g, "$1");
     const page = zlib.inflateSync(unz85(text)).toString("utf8");
     if (!re.test(page)) throw new Error("stamp not found in the page");
     const again = zlib.deflateSync(Buffer.from(page.replace(re, "version " + version + " ")), {
@@ -42,5 +49,7 @@ function restamp(code, version) {
     });
     return JSON.stringify(z85(again));
   });
+  if (!found && /^\/\/ shabbat_ui/.test(code)) throw new Error("page payload not found");
+  return out;
 }
 module.exports = { restamp, z85, unz85, Z85 };

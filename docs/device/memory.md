@@ -33,17 +33,39 @@ the device) or *design* (a rule we chose). Recheck on new firmware or other mode
   offset, keeping the reply's string as the table, peaks at 20.2 KB at boot and does not raise
   the peak on reload (`../experiments/table-generation.md`). The simulator cannot measure
   memory; it checks the read sizes instead.
-- **More than about 8 timers run the controller out of memory** (*observed*, 2026-11-14,
-  fw 2.0.3, on main 4eecb84 and on the review-fixes build alike): saving 12 clock timers
-  stopped the script with `errors: ["out_of_memory"]`, and because they were already saved
-  it stopped again at every start. Boot peak with N clock timers (each on every day: 3 blocks
-  per window): 4 -> 21,616, 6 -> 22,848, 8 -> 24,066, 10 and 12 out of memory, about 610
-  bytes a timer. Timers anchored to candle lighting or havdalah (1 block a window): 8 boot at
-  22,974, 12 at 24,542, but a 3-window forecast with 12 runs out. The page allows 12, so a
-  user can stop the controller by adding timers (`../experiments/page-size-and-load.md`).
-- **Serving the page loader costs ~1.6 KB at the peak** (*measured*, 2026-11-14): the
-  first `/script/<id>/ui` request after a start took the peak from 20,958 to 22,540 (the
-  page is 3,223 bytes); later requests, even 3 at once, did not raise it further. With the
-  page's first status request and forecast, a page load peaked at ~24 KB, close to the pool.
-  One page load with a fresh skip (so a publish followed) ran out of memory once and could
-  not be repeated.
+- **More than about 8 timers ran the controller out of memory** (*observed*, 2026-11-14,
+  fw 2.0.3, main 4eecb84): saving 12 clock timers stopped the script with
+  `errors: ["out_of_memory"]`, and because they were saved it stopped again at every start.
+  Boot peak with N clock timers (each on every day: 3 blocks per window): 4 -> 21,616,
+  6 -> 22,848, 8 -> 24,066, 10 and 12 out of memory, ~610 bytes a timer; 12 anchored timers
+  booted at 24,542 but their forecast ran out. The cause was the list of blocks (an array per
+  timer per day, ~110 bytes each). Fixed (*measured*, same day): the blocks are walked one at
+  a time into globals (`nextBlk`), and 12 clock timers boot at 22,386-22,512, ~200 bytes a
+  timer (the timers themselves, ~116 bytes each, stay in memory).
+- **The engine frees nothing within one computation that it can still reach later, and a
+  value made per step adds up** (*observed*, 2026-11-14): a label string made for every block
+  on every pass of `segAt` (up to 100 passes) ran 8 timers with repeats out of memory at the
+  first tick, so the stretch's timers are bits (`sM`) and the text is made once
+  (`maskLabel`).
+- **A string that is appended to is copied whole each time** (*observed*, 2026-11-14): the
+  publish body (~1.8 KB) built by appending every field ran the script out of memory with 6
+  repeating timers; it is built a window at a time now (each window's part on its own, added
+  once), and the publish stops adding windows when free memory is short.
+- **Serving the page loader cost ~1.6 KB at the peak** (*measured*, 2026-11-14): assembling
+  the page per request with the two script ids took the peak from 20,958 to 22,540. The
+  loader is one fixed string now (`UI_PAGE`): it reads its own id from its address and the
+  page script's id from `ShabbatGet` (`ui`), and a page load does not raise the peak.
+- **The boot copy of the settings was kept** (*measured*): after a save, the old timers
+  stayed in memory too (+1,360 bytes with 12); `bootLoaded` is released after boot.
+- **The script sees its own free memory**: `Shelly.getComponentStatus("script", id).mem_free`
+  (*observed*: ~4,800 with 12 timers after boot; `mem_used` + `mem_free` came to ~24.4 KB, so
+  the room is less than the 25,200 a stopped script shows). The forecast uses it: it stops
+  adding windows unless 3 times the cost of the windows so far plus 1,500 bytes are free
+  (`pvRoom`), and says `more`. A forecast window costs ~340 bytes with 12 clock timers,
+  ~650 with 4 plain ones and ~1,900 with 6 repeating ones; 3 of the last ran out of memory on
+  main and on this build without the guard. The page keeps asking while `more`.
+- **Page use with 12 timers peaks at ~24.2 KB** (*measured*, 2026-11-14): load, the Timers
+  tab's forecast (6 requests of 1 window, each carrying the 12 draft timers), an edit and a
+  save peaked at 24,220, about what main reached with 4 timers (24,164 on 2026-11-08). The
+  draft timers in each forecast request are ~1.4 KB of it. Little room is left: keep new
+  work off these paths, or measure it.

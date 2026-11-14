@@ -141,11 +141,20 @@ Each has a reason in `docs/device/` and `docs/experiments/`.
   device); ternaries only between plain values (one with a sum and a call in a branch was a
   syntax error). The device parses a function when it is first called, so a deploy can look
   fine until the first tick: watch the script for a minute after deploying.
-- **The forecast is asked 3 windows at a time** (`ShabbatPreview {n: 3}`, then `from` the
-  third window's end): 5 windows with repeating timers ran the script out of memory.
+- **The forecast is asked at most 3 windows at a time** (`ShabbatPreview {n: 3}`, then
+  `from` the last window's end while the reply says `more`): 5 windows with repeating timers
+  ran the script out of memory, and the controller sends fewer when its free memory is short
+  (`pvRoom`; with 6 repeating timers, 1 a request). The publish likewise stops adding windows.
+- **No list or string made per block, per pulse or per pass on the relay's paths**: the
+  blocks are walked one at a time (`blkStart` / `nextBlk`), the stretch's timers are bits;
+  12 clock timers ran out of memory when the blocks were listed (`docs/device/memory.md`).
+  The tick reuses its last answer until it runs out (`cacheUntil`): clear it when the timers,
+  the skip, the test time or the table change. The device interprets the code as text on
+  every call, so keep the functions on these paths short.
 - **Controller minification stays conservative** (terser `compress: false`): no inlining or
   statement merging. Top-level names must survive; `test/sim.js` calls them.
-- **Script memory is tight** (~25 KB pool shared by running scripts; peak ~16-20 KB).
+- **Script memory is tight** (~25 KB pool shared by running scripts, ~24.4 KB usable after
+  boot; boot peak ~20-22.5 KB, page use up to ~24.2 KB with 12 timers).
   Do not keep large strings around (assemble per request); check `mem_peak` after a deploy.
 - **Page budget: `dist/shabbat_ui.js` at most 28,672 bytes** (the loader asks for 7 x 4 KB
   first, 2 at a time; past that every load waits for them and then reads the rest). The build prints the size;

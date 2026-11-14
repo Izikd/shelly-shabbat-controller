@@ -50,7 +50,7 @@ let CFG = {
   pubN: 6, // windows sent to the schedule service
   tag: "shabbat", // Switch.Set tag: tells our commands from manual ones
   maxTimers: 12,
-  memPreview: 4000, // free script memory needed for one more forecast window (bytes)
+  memPreview: 1500, // free script memory kept on top of 3 forecast windows (bytes)
   memPublish: 2000, // ... for one more window of the published schedule, plus 3 x the body
   debug: false,
   diag: false // staged boot (1 s per step) + memory logs: set true in a local build to debug
@@ -732,8 +732,12 @@ function doSet(req, params) {
     let tt = Math.floor(params.test || 0);
     testTime = tt > 0 ? tt : 0;
     lastWanted = null;
+    cacheUntil = 0; // another clock: the tick works it out afresh
   }
-  cacheUntil = 0; // the tick works it out afresh
+  // what the relay follows changed: the tick works it out afresh (not for auto: it only
+  // decides whether the answer is applied)
+  if (params.timers !== undefined) cacheUntil = 0;
+  if (params.skip !== undefined) cacheUntil = 0;
   if (changed) {
     saveCfg();
     pubSoon(30);
@@ -746,6 +750,22 @@ function doSet(req, params) {
   }
   replyQ.push(req);
   kickTick();
+}
+
+// whether one of the repeats rl is switched on
+function anyRep(rl) {
+  for (let i = 0; i < rl.length; i++) if (rl[i] && rl[i][2]) return true;
+  return false;
+}
+
+// Room for one more forecast window after k of them, free memory having been f0 before them.
+// A window costs ~340 bytes with 12 clock timers and ~1,900 with 6 repeating ones (measured on
+// the device; 3 of those ran the script out of memory), so the room asked for is 3 times what
+// the windows so far cost each (one more, and the reply's text), plus a margin
+function pvRoom(f0, k) {
+  let m = memFree();
+  let need = (3 * (f0 - m)) / k;
+  return m >= need + CFG.memPreview;
 }
 
 function doPreview(req, params) {
@@ -764,20 +784,19 @@ function doPreview(req, params) {
     }
     tl = params.timers;
   }
-  let rep = 0;
-  for (let i = 0; i < rl.length; i++) if (rl[i] && rl[i][2]) rep = 1;
+  let rep = anyRep(rl);
   let n = Math.floor(params.n || 6);
   if (n < 1) n = 1;
   if (n > 8) n = 8;
   let t = getNow() || TBL_BASE;
   let idx = findWin(params.from ? Math.floor(params.from) : t);
   let out = [];
+  let f0 = memFree();
   for (let k = 0; k < n; k++) {
     let w = getWin(idx + k);
     if (!w) break;
-    // memory first: fewer windows, and more says the rest are still to come (with 6 repeating
-    // timers 3 windows ran the script out of memory on the device, docs/device/memory.md)
-    if (k && memFree() < CFG.memPreview) break;
+    // memory first: fewer windows, and more says the rest are still to come
+    if (k && !pvRoom(f0, k)) break;
     let o = { t: w.title, k: w.k, s: w.s, e: w.e, skip: w.s === cfg.s, on: [], rp: [] };
     out.push(o);
     if (o.skip) continue;

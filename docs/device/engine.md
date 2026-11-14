@@ -44,6 +44,12 @@ the device) or *design* (a rule we chose). Recheck on new firmware or other mode
   the script restarts. This replaced a separate "diag" build (Nov 2026). For a crash during
   boot, set `diag: true` in `src/main.js` (1 s between boot steps, memory logged after each)
   and deploy a local build.
+- **The device is slow, and long functions cost on every call** (*measured*, 2026-11-14,
+  fw 2.0.3): a tick with 4 timers took ~1.5 s and a 3-window forecast ~2.3 s on main; walking
+  12 timers' blocks afresh on every pass took the tick to ~5.5 s. The engine reads the code
+  as text when it runs, so a call costs the whole function body; keep functions on the
+  relay's paths short, and avoid repeating work: the tick reuses its last answer until it
+  runs out (`cacheUntil`; CPU 3-4% between starts).
 - **A script that crashes the device is disabled at the next boot** (*doc*). A script that
   stops on an error stays stopped until a reboot. The watchdog brings both back: a firmware
   schedule (`Schedule.Create`, `"0 17 * * * *"`) calls `Script.Start` on the controller every

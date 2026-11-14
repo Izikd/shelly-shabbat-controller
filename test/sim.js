@@ -93,7 +93,12 @@ function makeDevice(opts) {
         if (type === "switch") return { id: 0, output: dev.relay, source: dev.src, tag: dev.tag };
         // free memory as on the device with room to spare; tests lower dev.memFree
         if (type === "script")
-          return { id: 1, mem_used: 18000, mem_peak: 20000, mem_free: dev.memFree || 7000 };
+          return {
+            id: 1,
+            mem_used: 18000,
+            mem_peak: 20000,
+            mem_free: dev.memFn ? dev.memFn() : dev.memFree || 7000
+          };
         return null;
       },
       getComponentConfig(type, id) {
@@ -911,6 +916,54 @@ useRef("pt");
   g = dev.call("ShabbatGet", {}).d;
   check(!r.ok && g.cfg.skip === 0, "skip that does not fit is refused: " + g.cfg.skip);
   console.log("T8 repeating timers: validation, relay, auto-off, preview, save, reboot: OK");
+}
+
+// ---------- T10: the tick reuses its answer until it runs out ----------
+{
+  const d = makeDevice({ now: 1762525200 }); // Fri 07/11/2025 16:20 Israel
+  let n = 0;
+  const seg = d.sb.segAt;
+  d.sb.segAt = function () {
+    n++;
+    return seg.apply(this, arguments);
+  };
+  vm.runInContext("cacheUntil = 0", d.sb); // the boot tick already worked it out
+  d.tick();
+  const first = n;
+  const until = vm.runInContext("cacheUntil", d.sb);
+  for (let t = d.now + 15; t < until; t += 15) {
+    d.now = t;
+    d.tick();
+  }
+  check(first > 0 && n === first, "no work until the answer runs out: " + (n - first));
+  d.now = until;
+  d.tick();
+  check(n > first, "worked out again when it does");
+  n = 0;
+  d.call("ShabbatSet", { auto: true });
+  check(n === 0, "auto does not clear it");
+  d.call("ShabbatSet", { skip: true });
+  check(n > 0, "a skip does");
+  d.call("ShabbatSet", { skip: false });
+  n = 0;
+  d.call("ShabbatSet", { test: 1762597800 });
+  check(n > 0 && d.relay === true, "test time does: ON at Sat 12:30");
+  console.log("T10 tick answer reused: OK");
+}
+
+// ---------- T11: the forecast stops when memory runs short, and says more are to come ----------
+{
+  const d = makeDevice({ now: 1762525200 });
+  let free = 5000;
+  d.memFn = () => (free -= 900); // each look costs 900: as if every window cost ~900
+  const r = d.call("ShabbatPreview", { n: 3 }).d;
+  check(r.w.length >= 1 && r.w.length < 3 && r.more === true, "fewer windows, more: " + r.w.length);
+  d.memFn = null;
+  const r2 = d.call("ShabbatPreview", { n: 3, from: r.w[r.w.length - 1].e }).d;
+  check(r2.w.length === 3 && r2.w[0].s > r.w[r.w.length - 1].s, "the rest follow");
+  const last = d.call("ShabbatPreview", { n: 3, from: REF.pt.w[REF.pt.w.length - 2][0] }).d;
+  check(last.more === false, "no more at the end of the table");
+  console.log("T11 forecast memory guard: OK");
 }
 
 // ---------- T9: a new device, or settings that cannot be read: no timers ----------
