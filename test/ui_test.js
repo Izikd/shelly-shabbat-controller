@@ -675,7 +675,8 @@ const listening = (proc) =>
     [path.join(__dirname, "mockdevice.js"), String(PORT3), String(NOW), "dev"],
     {
       stdio: ["ignore", "pipe", "inherit"],
-      env: Object.assign({}, process.env, { MOCK_DATES: "none" })
+      // a new device: no location, no timers
+      env: Object.assign({}, process.env, { MOCK_DATES: "none", MOCK_TIMERS: "none" })
     }
   ));
   await listening(srv3);
@@ -712,6 +713,13 @@ const listening = (proc) =>
   let g3 = await api3("Script.ShabbatGet", { id: 1 });
   check(!g3.st.loc && g3.st.next === null && g3.st.relay === false, "no location: no windows");
   check(cdn.jsdelivr + cdn.unpkg === 0, "no CDN request before Set location");
+  // a new device has no timers (there are no default ones); the list is empty, ready to add
+  check(g3.cfg.timers.length === 0, "new device: no timers");
+  await lp.click("role=tab[name='Timers']");
+  await lp.waitForSelector("text=+ Add timer");
+  check((await lp.locator("text=Maximum of 12").count()) === 0, "empty timer list, can add");
+  await lp.click("role=tab[name='Status']");
+  await lp.waitForSelector("text=No location set");
   await lp.screenshot({ path: path.join(out, "loc-1-none.png"), fullPage: true });
   // a file that does not match its integrity hash is refused, on both CDNs
   cdn.mode = "tampered";

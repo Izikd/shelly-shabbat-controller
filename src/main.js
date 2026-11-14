@@ -55,12 +55,6 @@ let CFG = {
   // a crash during boot. CFG.debug can be switched at runtime instead (docs/device/engine.md).
 };
 
-let DEFAULT_TIMERS = [
-  [0, 15, 30, 0, 0, 1],
-  [1, 720, 60, 0, 0, 1],
-  [2, -40, 40, 0, 0, 1]
-];
-
 // ---------------- Window table (from the shabbat_dates script) ----------------
 // Window: 8 characters - start in minutes since TBL_BASE (4 base-64 digits), length in minutes
 // (3), title index (1); see src/tablegen.js. Empty until read: no windows, relay off.
@@ -997,8 +991,10 @@ let BOOT = [
     let c = bootLoaded;
     if (c && validTimers(c.t)) cfg = { t: c.t, a: c.a === 0 ? 0 : 1, s: c.s || 0, r: [] };
     else {
-      cfg = { t: DEFAULT_TIMERS, a: 1, s: 0, r: [] };
-      console.log("Using default timers");
+      // nothing saved, or not readable: no timers (the relay stays off until some are set).
+      // There are no default timers: nothing switches on that the user did not ask for.
+      cfg = { t: [], a: 1, s: 0, r: [] };
+      console.log("No saved timers");
     }
     if (c && c.r && validTimers(c.t) && validReps(c.r, c.t)) cfg.r = c.r;
   },

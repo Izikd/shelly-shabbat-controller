@@ -34,7 +34,15 @@ function check(cond, msg) {
   }
 }
 
+// The timers most tests run with (the controller itself has none until the user sets some):
+// 30 min from 15 min after candle lighting, 12:00-13:00, the last 40 min before havdalah
+const DEF_TIMERS = [
+  [0, 15, 30, 0, 0, 1],
+  [1, 720, 60, 0, 0, 1],
+  [2, -40, 40, 0, 0, 1]
+];
 // ---------- Mock device ----------
+// opts.kvs without saved settings gets DEF_TIMERS, unless opts.fresh (a new device)
 // opts.dates: shabbat_dates code (default: Petah Tikva), null = no such script
 function makeDevice(opts) {
   opts = opts || {};
@@ -64,6 +72,8 @@ function makeDevice(opts) {
     httpReply: { code: 204, message: "No Content", headers: {}, body: "" },
     httpErr: 0
   };
+  if (!opts.fresh && !("shabbat_elev_cfg" in dev.kvs))
+    dev.kvs.shabbat_elev_cfg = JSON.stringify({ t: DEF_TIMERS, a: 1, s: 0 });
   dev.src = "init";
   dev.tag = null;
   dev.manual = (on) => {
@@ -599,7 +609,7 @@ function sweep(timers, label, skipIdx, place, reps, nWin) {
       }
     : {};
   const dev = makeDevice({ kvs, now: ranges[0][0] - 86400, dates: DATES[place || "pt"] });
-  timers = timers || vm.runInContext("DEFAULT_TIMERS", dev.sb);
+  timers = timers || DEF_TIMERS;
   let skip = 0;
   let mism = 0,
     onMin = 0,
@@ -899,6 +909,26 @@ useRef("pt");
   g = dev.call("ShabbatGet", {}).d;
   check(!r.ok && g.cfg.skip === 0, "skip that does not fit is refused: " + g.cfg.skip);
   console.log("T8 repeating timers: validation, relay, auto-off, preview, save, reboot: OK");
+}
+
+// ---------- T9: a new device, or settings that cannot be read: no timers ----------
+{
+  const SAT1230 = 1762597800; // Sat 08/11/2025 12:30 Israel, inside a window
+  for (const kvs of [{}, { shabbat_elev_cfg: "{oops" }, { shabbat_elev_cfg: '{"t":[[9]]}' }]) {
+    const d = makeDevice({ fresh: true, kvs, now: SAT1230 });
+    d.tick();
+    const g = d.call("ShabbatGet", {}).d;
+    check(
+      g.cfg.timers.length === 0 && g.st.cur && g.st.on === null && d.relay === false,
+      "no timers, relay off: " + JSON.stringify(kvs)
+    );
+    check(d.relaySets === 0, "the relay is not touched");
+    check(
+      d.call("ShabbatPreview", { n: 3 }).d.w.every((w) => w.on.length === 0),
+      "empty forecast"
+    );
+  }
+  console.log("T9 no default timers: OK");
 }
 
 // ---------- T6: firmware auto-off, manual hold, event log ----------

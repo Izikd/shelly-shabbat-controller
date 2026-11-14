@@ -157,7 +157,8 @@ Each has a reason in `docs/device/` and `docs/experiments/`.
 - **Older releases must keep reading the saved settings**: users can go back from a beta to
   an older stable release from the page ("Install stable"). An older controller keeps only
   `t`, `a`, `s` of `shabbat_elev_cfg` and falls back to its default timers (until the next
-  save) if `t` does not pass its `validTimer` (exactly 6 integers per timer). So add new
+  save; older releases have three default timers, the current one has none: a new device
+  switches nothing until the user adds timers) if `t` does not pass its `validTimer` (exactly 6 integers per timer). So add new
   settings as new top-level fields, never change the shape of a timer or the meaning of an
   existing field; if a change cannot avoid it, say so in that release's notes. Example: the
   repeats are the top-level `r` (one entry per timer), and a repeating timer is saved with

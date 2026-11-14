@@ -55,6 +55,8 @@ Download `shabbat_controller.js` and `shabbat_ui.js` from the latest
    warns a year ahead) to extend the times. In the far north, where summer nights give no havdalah
    time at 8.5 degrees, havdalah is 72 minutes after sunset all year (the page tells you);
    places with no sunset in summer are refused.
+5. **Add your timers** on the Timers tab. A new device has none: nothing is switched until
+   you add them.
 
 ### Install from the Shelly script library
 In the device web UI: Scripts -> Library -> Configure URL, enter

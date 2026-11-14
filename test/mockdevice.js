@@ -42,6 +42,18 @@ const PUB_URL = fs
   .match(/PUB_URL = "([^"]+)"/)[1];
 const SVC = "http://localhost:" + (port + 1);
 const dev = { relay: false, kvs: {}, rpc: {}, endpoints: {}, pending: [], timers: [] };
+// saved timers, as on a device in use (the controller has none of its own); MOCK_TIMERS=none
+// is a new device
+if (process.env.MOCK_TIMERS !== "none")
+  dev.kvs.shabbat_elev_cfg = JSON.stringify({
+    t: [
+      [0, 15, 30, 0, 0, 1],
+      [1, 720, 60, 0, 0, 1],
+      [2, -40, 40, 0, 0, 1]
+    ],
+    a: 1,
+    s: 0
+  });
 // stored script code (bytes) and state; script 1 is the controller
 const scripts = {
   1: { name: "shabbat_controller", code: Buffer.from(CODE, "utf8"), running: true, enable: true },
