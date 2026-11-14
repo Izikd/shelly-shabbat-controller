@@ -1761,6 +1761,7 @@ if (typeof document !== "undefined")
           return putCode(id, code, L.locSaving, P);
         })
         .then(function () {
+          watchdog(true);
           return devRpc("Script.ShabbatSet", { id: ID, reload: true });
         })
         .then(function (j) {
@@ -2057,6 +2058,34 @@ if (typeof document !== "undefined")
         render();
       });
     }
+    // Watchdog: a firmware schedule starts the controller every hour (Script.Start of a running
+    // script does nothing), so a crash does not leave the relay alone until the next reboot.
+    // Made by the page, not the controller (no script memory), when timers or the location are
+    // saved; turned off while an update replaces the controller. Best effort: a device with
+    // its 20 schedules taken has none.
+    var wdOk = false;
+    function watchdog(on) {
+      if (on && wdOk) return Promise.resolve();
+      return devRpc("Schedule.List")
+        .then(function (l) {
+          var j = (l.jobs || []).filter(function (x) {
+            var c = (x.calls || [])[0];
+            return c && /^script\.start$/i.test(c.method) && c.params && c.params.id === ID;
+          })[0];
+          wdOk = on;
+          if (j)
+            return j.enable === on ? null : devRpc("Schedule.Update", { id: j.id, enable: on });
+          if (on)
+            return devRpc("Schedule.Create", {
+              enable: true,
+              timespec: "0 17 * * * *",
+              calls: [{ method: "Script.Start", params: { id: ID } }]
+            });
+        })
+        .catch(function () {
+          wdOk = false;
+        });
+    }
     // Upload in 1 KB pieces, like tools/deploy.py. A lost reply may or may not have applied its
     // piece, so an append is never re-sent blindly: the upload resumes from the length the
     // device reports. Then the code is read back and compared.
@@ -2127,6 +2156,9 @@ if (typeof document !== "undefined")
         })
         .then(function (c) {
           backup = c;
+          return watchdog(false); // it must not start a half-uploaded controller
+        })
+        .then(function () {
           return devRpc("Script.Stop", { id: ID });
         })
         .then(function () {
@@ -2140,6 +2172,7 @@ if (typeof document !== "undefined")
         })
         .then(function () {
           stopped = false;
+          watchdog(true);
           return waitCtrl(20);
         })
         .then(function () {
@@ -2152,6 +2185,7 @@ if (typeof document !== "undefined")
         .catch(function (e) {
           var msg = tr(L.updFailed, e.message);
           function done(extra) {
+            watchdog(true);
             S.upd = { err: msg + extra };
             render();
             refresh();
@@ -2565,6 +2599,7 @@ if (typeof document !== "undefined")
                     cls: "btn pri",
                     onclick: function () {
                       rpc("ShabbatSet", draft(), function (j) {
+                        watchdog(true);
                         S.saved = JSON.stringify(draft());
                         S.editing = -1;
                         S.flash = L.saved;

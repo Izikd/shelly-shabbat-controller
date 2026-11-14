@@ -41,7 +41,7 @@ const PUB_URL = fs
   .readFileSync(path.join(ROOT, "src/ui.js"), "utf8")
   .match(/PUB_URL = "([^"]+)"/)[1];
 const SVC = "http://localhost:" + (port + 1);
-const dev = { relay: false, kvs: {}, rpc: {}, endpoints: {}, pending: [], timers: [] };
+const dev = { relay: false, kvs: {}, rpc: {}, endpoints: {}, pending: [], timers: [], jobs: [] };
 // saved timers, as on a device in use (the controller has none of its own); MOCK_TIMERS=none
 // is a new device
 if (process.env.MOCK_TIMERS !== "none")
@@ -324,6 +324,29 @@ function serve(req, res, u) {
         return json(res, 200, {});
       }
       if (u.pathname === "/rpc/Script.List") return json(res, 200, { scripts: scriptList() });
+      // firmware schedules (the page's watchdog), as the docs describe them
+      if (u.pathname === "/rpc/Schedule.List")
+        return json(res, 200, { jobs: dev.jobs.map((j) => ({ ...j })), rev: dev.jobs.length });
+      if (u.pathname === "/rpc/Schedule.Create") {
+        if (dev.jobs.length >= 20)
+          return json(res, 500, { code: -103, message: "Too many schedules" });
+        const id = dev.jobs.reduce((m, j) => Math.max(m, j.id), 0) + 1;
+        dev.jobs.push({
+          id,
+          enable: params.enable !== false,
+          timespec: params.timespec,
+          calls: params.calls
+        });
+        return json(res, 200, { id, rev: dev.jobs.length });
+      }
+      if (u.pathname === "/rpc/Schedule.Update") {
+        const j = dev.jobs.find((x) => x.id === +params.id);
+        if (!j) return json(res, 500, { code: -105, message: "Argument 'id' not found!" });
+        if (params.enable !== undefined) j.enable = !!params.enable;
+        dev.jobs.log = (dev.jobs.log || []).concat(j.enable ? "on" : "off");
+        return json(res, 200, { rev: dev.jobs.length });
+      }
+      if (u.pathname === "/mock/jobs") return json(res, 200, { jobs: dev.jobs, log: dev.jobs.log });
       if (u.pathname === "/rpc/Script.Create") {
         const id = Math.max(...Object.keys(scripts).map(Number)) + 1;
         scripts[id] = {

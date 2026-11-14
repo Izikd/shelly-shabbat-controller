@@ -202,6 +202,20 @@ const listening = (proc) =>
     g.cfg.timers[0][5] === 0 && JSON.stringify(g.cfg.reps) === "[[35,240,1],0,0,0]",
     "repeat saved, the timer itself disabled: " + JSON.stringify(g.cfg.reps)
   );
+  // the save also sets up the watchdog: a firmware schedule that starts the controller hourly
+  const jobsOf = (port) => fetch(`http://localhost:${port}/mock/jobs`).then((r) => r.json());
+  let jobs;
+  for (let i = 0; i < 20 && !(jobs && jobs.jobs.length); i++) {
+    await page.waitForTimeout(100);
+    jobs = await jobsOf(PORT);
+  }
+  check(
+    jobs.jobs.length === 1 &&
+      jobs.jobs[0].enable &&
+      jobs.jobs[0].timespec === "0 17 * * * *" &&
+      JSON.stringify(jobs.jobs[0].calls) === '[{"method":"Script.Start","params":{"id":1}}]',
+    "watchdog schedule: " + JSON.stringify(jobs)
+  );
   await page.screenshot({ path: path.join(out, "5-saved.png") });
 
   // status: skip + test time
@@ -570,6 +584,12 @@ const listening = (proc) =>
       "// shabbat_ui - version v0.2.0 "
     ) === 0,
     "settings page is v0.2.0"
+  );
+  // the watchdog was off while the controller was replaced, and is on again
+  const j2 = await (await fetch(`http://localhost:${PORT2}/mock/jobs`)).json();
+  check(
+    j2.jobs.length === 1 && j2.jobs[0].enable && /off,on$/.test((j2.log || []).join(",")),
+    "watchdog off during the update, on after: " + JSON.stringify(j2)
   );
   const after = await api2("Script.ShabbatGet", { id: 1 });
   check(

@@ -44,5 +44,11 @@ the device) or *design* (a rule we chose). Recheck on new firmware or other mode
   the script restarts. This replaced a separate "diag" build (Nov 2026). For a crash during
   boot, set `diag: true` in `src/main.js` (1 s between boot steps, memory logged after each)
   and deploy a local build.
-- **A script that crashes the device is disabled at the next boot** (*doc*). Nothing in this
-  project restarts it yet; watch for it after risky changes.
+- **A script that crashes the device is disabled at the next boot** (*doc*). A script that
+  stops on an error stays stopped until a reboot. The watchdog brings both back: a firmware
+  schedule (`Schedule.Create`, `"0 17 * * * *"`) calls `Script.Start` on the controller every
+  hour (a no-op while it runs). The settings page makes it when timers or the location are
+  saved, and the page's update and `tools/deploy.py` turn it off while they replace the
+  controller (it could start a half-uploaded one) (*design*, not yet seen on hardware; the
+  mock implements `Schedule.List` / `Create` / `Update` as documented). A crash on every
+  start would repeat hourly; watch for it after risky changes.

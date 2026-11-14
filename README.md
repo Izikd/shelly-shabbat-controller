@@ -56,7 +56,9 @@ Download `shabbat_controller.js` and `shabbat_ui.js` from the latest
    time at 8.5 degrees, havdalah is 72 minutes after sunset all year (the page tells you);
    places with no sunset in summer are refused.
 5. **Add your timers** on the Timers tab. A new device has none: nothing is switched until
-   you add them.
+   you add them. Saving them also adds a device schedule that starts the controller
+   every hour if it has stopped (Schedules in the device's web UI, minute 17); to stop the
+   controller for good, delete that schedule too.
 
 ### Install from the Shelly script library
 In the device web UI: Scripts -> Library -> Configure URL, enter

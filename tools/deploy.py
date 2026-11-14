@@ -276,6 +276,30 @@ def find_or_create(dev, scripts, match, create_name, dry_run):
     return {"id": sid, "name": create_name, "enable": False, "running": False}
 
 
+WATCHDOG_SPEC = "0 17 * * * *"  # minute 17 of every hour, as the settings page makes it
+
+
+def watchdog(dev, ctrl_id, on):
+    """The firmware schedule that starts the controller every hour (src/ui.js, watchdog):
+    off while the controller is replaced, so it cannot start a half-uploaded one; on (made if
+    missing) afterwards. Best effort: a device with all 20 schedules taken has none."""
+    try:
+        for job in dev.call("Schedule.List").get("jobs", []):
+            c = (job.get("calls") or [{}])[0]
+            if (c.get("method", "").lower() == "script.start"
+                    and (c.get("params") or {}).get("id") == ctrl_id):
+                if job.get("enable") != on:
+                    dev.call("Schedule.Update", {"id": job["id"], "enable": on})
+                return
+        if on:
+            dev.call("Schedule.Create", {"enable": True, "timespec": WATCHDOG_SPEC,
+                                         "calls": [{"method": "Script.Start",
+                                                    "params": {"id": ctrl_id}}]})
+            print("  watchdog: hourly Script.Start schedule created")
+    except Exception as e:  # noqa: BLE001 - the deploy does not depend on it
+        print(f"  warning: watchdog schedule not {'set' if on else 'paused'}: {e}")
+
+
 def deploy_one(dev, script, code, label, restart, dry_run):
     """Returns True when the code on the device was (or would be) replaced."""
     current = dev.get_code(script["id"]) if script else ""
@@ -288,6 +312,8 @@ def deploy_one(dev, script, code, label, restart, dry_run):
           f"{old} -> {code_version(code)} ({len(current)} -> {len(code)} chars)")
     if dry_run:
         return True
+    if restart:
+        watchdog(dev, script["id"], False)
     if restart and script.get("running"):
         dev.call("Script.Stop", {"id": script["id"]})
         print("    stopped")
@@ -354,6 +380,7 @@ def main():
         if not args.dry_run:
             try:
                 dev.call("Script.Start", {"id": ctrl["id"]})
+                watchdog(dev, ctrl["id"], True)
                 print("  controller start attempted after the failure - check its state")
             except Exception as e:
                 print(f"  CONTROLLER IS STOPPED ({e}) - re-run the deploy")
@@ -386,6 +413,7 @@ def main():
         time.sleep(10)
 
     status = dev.call("Script.GetStatus", {"id": ctrl["id"]})
+    watchdog(dev, ctrl["id"], True)
     if not status.get("running"):
         raise SystemExit(f"error: controller is not running: {status}")
     print(f"Controller running: mem used {status.get('mem_used')}, peak {status.get('mem_peak')}, "
