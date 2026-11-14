@@ -20,6 +20,11 @@ the device) or *design* (a rule we chose). Recheck on new firmware or other mode
   already be applied. `deploy.py` re-reads the code length and resumes (*design*).
 - The code of a running script cannot be replaced; stop it first (*doc*). The mock refuses it
   too.
+- **`Script.Delete` answers `null`** (*doc*): not a JSON object, so the page's request
+  helper takes it for a lost reply; the location save accepts that answer. `Script.SetConfig
+  {config: {name}}` renames a script (*doc*). The location save uses both to put a checked
+  copy in place of `shabbat_dates` (neither yet tried on hardware; the mock answers as the
+  docs say).
 - **`Script.Start` of code that does not parse** answers HTTP 500
   `{code: -2, message: "syntax_error"}` and the script stays stopped (*observed*); the page
   treats that as a failure and puts the old code back. While a started controller is still

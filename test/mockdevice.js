@@ -358,11 +358,23 @@ function serve(req, res, u) {
         return json(res, 200, { id });
       }
       const sc = scripts[params.id];
-      if (/^\/rpc\/Script\.(GetCode|PutCode|Stop|Start)$/.test(u.pathname) && !sc)
+      if (/^\/rpc\/Script\.(GetCode|PutCode|Stop|Start|Delete|SetConfig)$/.test(u.pathname) && !sc)
         return json(res, 500, {
           code: -105,
           message: "Argument 'id', value " + params.id + " not found!"
         });
+      if (u.pathname === "/rpc/Script.Delete") {
+        if (sc.running) return json(res, 500, { code: -103, message: "Script is running" });
+        delete scripts[params.id];
+        res.writeHead(200, { "Content-Type": "application/json" });
+        return res.end("null"); // what the device answers (the docs: the result is null)
+      }
+      if (u.pathname === "/rpc/Script.SetConfig") {
+        const c = params.config || {};
+        if (c.name !== undefined) sc.name = c.name;
+        if (c.enable !== undefined) sc.enable = !!c.enable;
+        return json(res, 200, { restart_required: false });
+      }
       if (u.pathname === "/rpc/Script.PutCode") {
         // the code of a running script cannot be replaced (Shelly docs)
         if (sc.running) return json(res, 500, { code: -103, message: "Script is running" });

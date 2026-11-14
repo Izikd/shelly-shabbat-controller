@@ -86,7 +86,7 @@ if (typeof document !== "undefined")
         loc: "מיקום",
         locNone: "לא נבחר מיקום – הממסר לא יופעל עד שתבחר מיקום.",
         locInfo: "{0} · זמנים עד {1}",
-        locHm: "במקום הזה אין בקיץ צאת הכוכבים: ההבדלה חושבה {0} דקות אחרי השקיעה.",
+        locHm: "אין כאן צאת כוכבים בקיץ: הבדלה {0} דק' אחרי השקיעה.",
         locSet: "בחר מיקום",
         locChange: "שנה מיקום",
         locHint: "הזמנים מחושבים בדפדפן עם hebcal, שנטען מהאינטרנט רק בלחיצה.",
@@ -290,7 +290,7 @@ if (typeof document !== "undefined")
         loc: "Location",
         locNone: "No location set – the relay will not switch until you set one.",
         locInfo: "{0} · times until {1}",
-        locHm: "No nightfall here in summer: havdalah is {0} minutes after sunset.",
+        locHm: "No nightfall here in summer: havdalah {0} min after sunset.",
         locSet: "Set location",
         locChange: "Change location",
         locHint:
@@ -1747,18 +1747,36 @@ if (typeof document !== "undefined")
           if (code.indexOf('"hm"') > 0) window.alert(tr(L.locHm, SD_HM));
           return devRpc("Script.List");
         })
+        // into a new script first (or one left by a save that was cut off), checked, and only
+        // then in place of the old one: a save cut off half way leaves the old times working
         .then(function (l) {
-          var d = (l.scripts || []).filter(function (x) {
-            return (x.name || "").indexOf("shabbat_dates") === 0;
-          })[0];
-          return d
-            ? d.id
-            : devRpc("Script.Create", { name: "shabbat_dates" }).then(function (r) {
-                return r.id;
-              });
-        })
-        .then(function (id) {
-          return putCode(id, code, L.locSaving, P);
+          function find(n) {
+            return (l.scripts || []).filter(function (x) {
+              return (x.name || "").indexOf(n) === 0;
+            })[0];
+          }
+          var d = find("shabbat_dates"),
+            t = find("shabbat_tmp");
+          return (t ? Promise.resolve(t) : devRpc("Script.Create", { name: "shabbat_tmp" })).then(
+            function (r) {
+              return putCode(r.id, code, L.locSaving, P)
+                .then(function () {
+                  // the device answers null, which dev() takes for a lost reply
+                  return (
+                    d &&
+                    devRpc("Script.Delete", { id: d.id }).catch(function (e) {
+                      if (!(e instanceof TypeError)) throw e;
+                    })
+                  );
+                })
+                .then(function () {
+                  return devRpc("Script.SetConfig", {
+                    id: r.id,
+                    config: { name: "shabbat_dates" }
+                  });
+                });
+            }
+          );
         })
         .then(function () {
           watchdog(true);
@@ -2070,7 +2088,7 @@ if (typeof document !== "undefined")
         .then(function (l) {
           var j = (l.jobs || []).filter(function (x) {
             var c = (x.calls || [])[0];
-            return c && /^script\.start$/i.test(c.method) && c.params && c.params.id === ID;
+            return c && c.method === "Script.Start" && c.params && c.params.id === ID;
           })[0];
           wdOk = on;
           if (j)

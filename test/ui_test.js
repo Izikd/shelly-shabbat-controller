@@ -795,8 +795,32 @@ const listening = (proc) =>
   await lp.fill("#llo", "-74.01");
   await lp.fill("#ltz", "America/New_York");
   await lp.click("button[aria-label='Israel (one-day Yom Tov)']");
+  // a save cut off half way (the connection drops after the first piece): the old times stay
+  let pieces = 0;
+  await lctx.route("**/rpc/Script.PutCode", (route) =>
+    pieces++ ? route.abort() : route.continue()
+  );
+  await lp.click("text=Save location");
+  await lp.waitForSelector("text=Saving the location failed", { timeout: 30000 });
+  await lctx.unroute("**/rpc/Script.PutCode");
+  const names = async () =>
+    (await api3("Script.List")).scripts.map((x) => x.name + ":" + x.id).join(" ");
+  g3 = await api3("Script.ShabbatSet", { id: 1, reload: true });
+  check(
+    g3.st.loc === "Jerusalem" && g3.did === 3,
+    "a cut-off save leaves the old times: " + g3.st.loc
+  );
+  check(
+    /shabbat_dates:3/.test(await names()) && /shabbat_tmp/.test(await names()),
+    "half-written copy kept aside"
+  );
   await lp.click("text=Save location");
   await lp.waitForSelector("text=Location saved");
+  const after3 = await names();
+  check(
+    !/shabbat_tmp/.test(after3) && (after3.match(/shabbat_dates/g) || []).length === 1,
+    "saved again: the copy took the old one's place: " + after3
+  );
   g3 = await api3("Script.ShabbatGet", { id: 1 });
   check(g3.st.loc === "40.71, -74.01" && g3.st.tz === "America/New_York", "coordinates saved");
   check(

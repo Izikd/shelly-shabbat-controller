@@ -170,7 +170,9 @@ Each has a reason in `docs/device/` and `docs/experiments/`.
 - **`shabbat_ui` never runs on the device**; it only stores the page code. deploy.py keeps it
   stopped and disabled. **`shabbat_dates` never runs either**: it stores the windows the page
   computed (comment lines only, so starting it does nothing). Updates and deploy.py leave it
-  alone. Its format starts with `// shabbat_dates v1`; the controller reads the header in
+  alone. The page writes a new table to a script `shabbat_tmp`, checks it by reading it
+  back, then deletes the old `shabbat_dates` and renames the copy (`Script.SetConfig`): a
+  save cut off half way leaves the old times in use. Its format starts with `// shabbat_dates v1`; the controller reads the header in
   1 KB `GetCode` pieces, then the windows line alone at its offset (the reply's string is
   the table): reading it whole ran out of memory (`docs/device/memory.md`). A change to the format needs a new
   version line, and the controller must keep reading the old one.
