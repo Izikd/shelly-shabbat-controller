@@ -18,7 +18,7 @@ A Cloudflare Worker (`src/index.js`, pages in `src/page.js`) with a D1 database
 3. Anyone with the link opens `GET /s/<id>`: plain HTML, no script, Hebrew or English
    (browser language, or `?lang=he|en`), in the device's time zone (the `tz` it sends;
    Israel if none), refreshes itself every 15 minutes.
-   Also `GET /s/<id>.json` and `GET /s/<id>/qr.svg`.
+   Also `GET /s/<id>.json`.
 4. Rename: `PUT /api/s/<id>/name {name}`; stop: `DELETE /api/s/<id>` (both with the key,
    from the settings page).
 

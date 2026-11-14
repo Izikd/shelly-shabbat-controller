@@ -1156,11 +1156,6 @@ if (typeof document !== "undefined")
             S.copied ? L.pubCopied : L.pubCopy
           )
         ),
-        h(
-          "a",
-          { href: link, target: "_blank", rel: "noopener", cls: "qr" },
-          h("img", { src: link + "/qr.svg", alt: link, width: 168, height: 168 })
-        ),
         h("span", { cls: "s" }, p.ok ? tr(L.pubLast, full(p.ok)) : L.pubNever),
         p.err ? h("div", { cls: "warn" }, tr(L.pubFail, p.err)) : null,
         name,
@@ -2687,8 +2682,6 @@ if (typeof document !== "undefined")
       .wrap { flex-wrap: wrap }
       .lnk { font-size: 14px; color: #1D4ED8; padding: 0 4px }
       .grow { flex: 1; min-width: 0 }
-      .qr { align-self: center; line-height: 0 }
-      .qr img { border-radius: 8px; border: 1px solid #E2E6EC }
       button:focus-visible, input:focus-visible { outline: 2px solid #1D4ED8; outline-offset: 2px }
     `;
     document.head.appendChild(h("style", null, css));

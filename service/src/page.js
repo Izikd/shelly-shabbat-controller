@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 // HTML of the public pages (no script: plain server-rendered HTML, in the device's time zone:
 // the schedule's tz, Israel for devices that do not send one).
-import qrcode from "qrcode-generator";
 
 const TZ = "Asia/Jerusalem";
 // formatters of the page being rendered (renderPage sets them for the schedule's time zone)
@@ -44,7 +43,6 @@ const T = {
     min: "{0} דק׳",
     every: "{0} כל {1}",
     hm: "{0} שע׳ {1} דק׳",
-    qr: "קוד QR להדפסה",
     foot: "שעון שבת ל-Shelly · הדף מתעדכן אוטומטית מהמכשיר",
     missingT: "הדף לא נמצא",
     missing: "אין לוח זמנים בכתובת הזו. ייתכן שהפרסום הופסק או שהקישור שגוי.",
@@ -83,7 +81,6 @@ const T = {
     min: "{0} min",
     every: "{0} every {1}",
     hm: "{0} h {1} min",
-    qr: "QR code to print",
     foot: "Shabbat clock for Shelly · this page updates itself from the device",
     missingT: "Page not found",
     missing:
@@ -236,9 +233,7 @@ export function renderPage(o) {
       ? wins.map((w) => windowCard(w, o.now, L, o.lang)).join("")
       : `<span class="s">${esc(L.none)}</span>`;
   }
-  body +=
-    `<footer><span class="s">${esc(L.foot)}</span>` +
-    `<a class="s" href="${esc(o.link)}/qr.svg">${esc(L.qr)}</a></footer>`;
+  body += `<footer><span class="s">${esc(L.foot)}</span></footer>`;
   return shell(L, o.lang, head, body);
 }
 
@@ -262,11 +257,4 @@ export function renderMissing(lang) {
     `<header><h1>${esc(L.missingT)}</h1><a class="lang" lang="${L.other}" href="?lang=${L.other}">${L.otherLabel}</a></header>` +
       `<div class="card">${esc(L.missing)}</div>`
   );
-}
-
-export function renderQr(link) {
-  const q = qrcode(0, "M");
-  q.addData(link);
-  q.make();
-  return q.createSvgTag({ cellSize: 8, margin: 4, scalable: true });
 }

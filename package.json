@@ -18,7 +18,6 @@
     "@hebcal/core": "6.14.6",
     "playwright": "1.63.0",
     "prettier": "3.9.10",
-    "qrcode-generator": "2.0.4",
     "terser": "5.51.2"
   }
 }

@@ -197,14 +197,16 @@ check(r.status === 204, "upload auto off");
 r = await call("GET", "/s/" + id + "?lang=en");
 check(/Automation is off/.test(r.text), "automation off warning");
 
-// json, qr, missing, home
+// json, trailing slash, missing, home
 r = await call("GET", "/s/" + id + ".json");
 check(r.status === 200 && r.json.name === "מעלית הרצל 5" && r.json.schedule.w.length === 2, "json");
-r = await call("GET", "/s/" + id + "/qr.svg");
+r = await call("GET", "/s/" + id + "/?lang=en");
 check(
-  r.status === 200 && /^<svg/.test(r.text) && r.headers.get("Content-Type") === "image/svg+xml",
-  "qr"
+  r.status === 200 && /^text\/html/.test(r.headers.get("Content-Type")) && !/qr/i.test(r.text),
+  "a trailing slash is the page too (it used to be the QR code); no QR code"
 );
+r = await call("GET", "/s/" + id + "/qr.svg");
+check(r.status === 404, "no QR code any more");
 r = await call("GET", "/s/zzzzzzzzzz");
 check(r.status === 404 && /not found|לא נמצא/.test(r.text), "missing page 404");
 r = await call("GET", "/");

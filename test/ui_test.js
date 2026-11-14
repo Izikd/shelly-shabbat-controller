@@ -268,7 +268,7 @@ const listening = (proc) =>
   const link = await page.inputValue("#plink");
   check(new RegExp("^" + PUB_URL + "/s/[a-z2-9]{10}$").test(link), "page link: " + link);
   await page.waitForSelector("text=נשלח לאחרונה", { timeout: 10000 });
-  await page.locator(".qr img").scrollIntoViewIfNeeded();
+  await page.locator("#plink").scrollIntoViewIfNeeded();
   await page.screenshot({ path: path.join(out, "7d-publish.png") });
   const pubSt = await api("ShabbatPub");
   check(

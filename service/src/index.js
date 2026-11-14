@@ -8,7 +8,6 @@
 //   DELETE /api/s/<id>                      -> 204                  (from the settings page)
 //   GET    /s/<id>            the public page (Hebrew / English, ?lang=he|en)
 //   GET    /s/<id>.json       the same data as JSON
-//   GET    /s/<id>/qr.svg     QR code of the page link
 //
 // Writes need "Authorization: Bearer <key>"; the key is returned once by /api/register and
 // kept only on the device (the database stores its SHA-256). Nobody needs an account: the
@@ -21,7 +20,7 @@
 // v 2 (devices with repeating timers) adds to each window
 //   rp: [[s, e, every, dur], ...]   a timer that turns on for dur minutes every `every`
 //   minutes, from s (its first pulse) to e (the end of its last pulse); v 1 is still accepted.
-import { renderPage, renderHome, renderMissing, renderQr } from "./page.js";
+import { renderPage, renderHome, renderMissing } from "./page.js";
 
 export const LIMITS = {
   regPerIpDay: 20, // new pages per client address per day
@@ -271,10 +270,6 @@ async function getPage(req, env, url, id, kind, now) {
       "Cache-Control": "no-store"
     });
   const link = url.origin + "/s/" + id;
-  if (kind === "qr")
-    return reply(200, renderQr(link), "image/svg+xml", {
-      "Cache-Control": "public, max-age=86400"
-    });
   const html = renderPage({
     lang,
     now,
@@ -286,7 +281,7 @@ async function getPage(req, env, url, id, kind, now) {
   return reply(200, html, "text/html; charset=utf-8", {
     "Cache-Control": "public, max-age=60",
     Vary: "Accept-Language",
-    "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; img-src 'self'"
+    "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'"
   });
 }
 
@@ -311,8 +306,8 @@ export async function route(req, env, now) {
       "Cache-Control": "public, max-age=3600",
       Vary: "Accept-Language"
     });
-  const g = p.match(/^\/s\/([a-z0-9]+)(\.json|\/qr\.svg|\/)?$/);
-  if (g) return getPage(req, env, url, g[1], g[2] === ".json" ? "json" : g[2] ? "qr" : "html", now);
+  const g = p.match(/^\/s\/([a-z0-9]+)(\.json|\/)?$/);
+  if (g) return getPage(req, env, url, g[1], g[2] === ".json" ? "json" : "html", now);
   return reply(404, renderMissing(pickLang(req, url)), "text/html; charset=utf-8");
 }
 
