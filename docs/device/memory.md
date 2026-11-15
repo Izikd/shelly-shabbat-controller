@@ -60,7 +60,7 @@ the device) or *design* (a rule we chose). Recheck on new firmware or other mode
 - **The script sees its own free memory**: `Shelly.getComponentStatus("script", id).mem_free`
   (*observed*: ~4,800 with 12 timers after boot; `mem_used` + `mem_free` came to ~24.4 KB, so
   the room is less than the 25,200 a stopped script shows). The forecast uses it: it stops
-  adding windows unless 3 times the cost of the windows so far plus 1,500 bytes are free
+  adding windows unless 3 times the cost of the windows so far plus 800 bytes are free
   (`pvRoom`), and says `more`. A forecast window costs ~340 bytes with 12 clock timers,
   ~650 with 4 plain ones and ~1,900 with 6 repeating ones; 3 of the last ran out of memory on
   main and on this build without the guard. The page keeps asking while `more`.

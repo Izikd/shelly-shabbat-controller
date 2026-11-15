@@ -50,7 +50,7 @@ let CFG = {
   pubN: 6, // windows sent to the schedule service
   tag: "shabbat", // Switch.Set tag: tells our commands from manual ones
   maxTimers: 12,
-  memPreview: 1500, // free script memory kept on top of 3 forecast windows (bytes)
+  memPreview: 800, // free script memory kept on top of 3 forecast windows (bytes)
   memPublish: 2000, // ... for one more window of the published schedule, plus 3 x the body
   debug: false,
   diag: false // staged boot (1 s per step) + memory logs: set true in a local build to debug

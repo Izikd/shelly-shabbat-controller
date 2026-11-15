@@ -306,6 +306,28 @@ per round trip). Entries are dated, newest last; keep the method so a test can b
     terser had escaped a `-->` in it (`--\x3e`, depending on the build's bytes), so the
     update test failed on some builds; it decodes escapes now and fails when it finds no
     payload.
-- **Decision**: keep all of it; margin 1,500. The page's forecast asks while `more`; the
+- **Decision**: keep all of it; margin 1,500 (corrected to 800 on 2026-11-15, next entry). The page's forecast asks while `more`; the
   page is 28,646 of 28,672 bytes (the watchdog's per-session flag dropped to make room;
   builds vary by a few bytes with the stamp). The device is back on main.
+
+## 2026-11-15 - main ca10a58 on the test device; the forecast margin back to 800
+- **Question**: does main, with the review fixes and the 12-timer work, behave on the device
+  as the branch builds did; and what does the forecast's margin cost?
+- **Method**: Pro 1, fw 2.0.3, Sunday (no window near). Device backed up, a clean build of
+  main installed with `tools/deploy.py --build`, then the checks of the two entries above
+  driven by RPC and, for the page and the location, Playwright (hebcal from the pinned
+  devDependency files). Then a local build with `memPreview` 800 measured the same way, and
+  the device put back on main with its own settings.
+- **Result** (main): watchdog restarted a stopped controller after 8 s (next minute);
+  settings too long refused whole; `http://` refused; 4 quick relay changes, 1 log save; a
+  change while a publish was in flight was published ~1 min later (one send got HTTP 429
+  from the service, 20 s after the previous write: retried in 5 min as designed); Stockholm
+  saved from the page with the far-north message, the skip moved, a cut-off save kept the
+  old times; no saved settings: no timers, nothing switched. Boot peak 21,672. CPU 21-24%
+  for ~12 s after a start, then 4%. The page with 12 timers: peak 24,220, no errors.
+  - But with the margin of 1,500 every forecast came 1 window a request (6 requests):
+    4 plain 9.5 s, 12 clock 12.9 s, 6 repeats 14.5 s. With 800: 4 plain 2 requests of 3,
+    5.0 s, peak 22,022; 12 clock 2 of 3, 8.2 s, peak 23,114; 6 repeats 6 of 1, 14.6 s, peak
+    22,568; the page with 12 timers peaked at 24,220 with either.
+- **Decision**: margin 800 (the 1,500 of the entry above was not measured on the forecast
+  of plain timers). The device is back on main ca10a58.
